@@ -26,7 +26,7 @@ type ExchangeRegistrar interface {
 // PairParams are the {period} and {pair} path parameters of the rate routes.
 type PairParams struct {
 	PeriodParam
-	Pair string `path:"pair" pattern:"^[A-Z]{3}-[A-Z]{3}$" example:"USD-PEN" doc:"Source and target currency: 1 source = rate × target."`
+	Pair string `path:"pair" pattern:"^[A-Z]{3}-[A-Z]{3}$" example:"USD-PEN" doc:"Currency pair as SOURCE-TARGET. The rate says how many units of TARGET you get for 1 unit of SOURCE: USD-PEN with rate 3.25 means 1 USD = 3.25 PEN."`
 }
 
 func (p PairParams) toInput() exchange.PairInput {
