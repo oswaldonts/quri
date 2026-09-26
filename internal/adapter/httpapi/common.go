@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
@@ -55,7 +56,8 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 	case errors.Is(err, income.ErrInvalidInput),
 		errors.Is(err, exchange.ErrInvalidInput),
 		errors.Is(err, category.ErrInvalidInput),
-		errors.Is(err, expense.ErrInvalidInput):
+		errors.Is(err, expense.ErrInvalidInput),
+		errors.Is(err, balance.ErrInvalidInput):
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, category.ErrNotFound):
 		return huma.Error404NotFound(err.Error())

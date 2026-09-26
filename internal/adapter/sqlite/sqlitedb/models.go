@@ -8,6 +8,13 @@ import (
 	"database/sql"
 )
 
+type Balance struct {
+	Period      string
+	Currency    string
+	AmountMinor int64
+	UpdatedAt   string
+}
+
 type Category struct {
 	ID         string
 	Name       string
@@ -53,6 +60,7 @@ type Income struct {
 	Description string
 	ReceivedOn  string
 	CreatedAt   string
+	CategoryID  sql.NullString
 }
 
 type PeriodCategory struct {

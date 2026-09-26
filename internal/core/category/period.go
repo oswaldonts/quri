@@ -14,8 +14,9 @@ var (
 	ErrArchived = errors.New("category is archived")
 	// ErrNotInPeriod means the category is not used in the period.
 	ErrNotInPeriod = errors.New("category is not used in the period")
-	// ErrInUse means the category has expenses in the period, so it can't be removed from it.
-	ErrInUse = errors.New("category has expenses in the period")
+	// ErrInUse means the category has expenses or contributions in the period, so it
+	// can't be removed from it.
+	ErrInUse = errors.New("category has entries in the period")
 )
 
 // ExchangeCategoryID is the system category that receives the source side of currency exchanges.
@@ -30,8 +31,8 @@ type PeriodRepository interface {
 	LatestConfiguredBefore(ctx context.Context, p period.Period) (prev period.Period, ok bool, err error)
 	// ReplacePeriod sets the categories of the period to exactly ids, atomically.
 	ReplacePeriod(ctx context.Context, p period.Period, ids []string) error
-	// HasExpenses reports whether the category has expenses in the period.
-	HasExpenses(ctx context.Context, p period.Period, id string) (bool, error)
+	// HasEntries reports whether the category has expenses or contributions in the period.
+	HasEntries(ctx context.Context, p period.Period, id string) (bool, error)
 }
 
 // Source tells where the categories of a period come from.
@@ -102,7 +103,7 @@ func (s *Service) Deactivate(ctx context.Context, periodStr, id string) (PeriodC
 	if c.IsSystem() {
 		return PeriodCategories{}, fmt.Errorf("%w: %s is always used", ErrSystemCategory, c.Name)
 	}
-	inUse, err := s.periods.HasExpenses(ctx, p, id)
+	inUse, err := s.periods.HasEntries(ctx, p, id)
 	if err != nil {
 		return PeriodCategories{}, err
 	}

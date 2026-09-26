@@ -72,18 +72,67 @@ func TestRegisterIncomeErrors(t *testing.T) {
 	}
 }
 
-// failingRegistrar simulates an unexpected failure (e.g. the database is down).
-type failingRegistrar struct{}
+// failingIncomes simulates an unexpected failure (e.g. the database is down).
+type failingIncomes struct{}
 
-func (failingRegistrar) Register(context.Context, income.RegisterInput) (income.Income, error) {
+func (failingIncomes) Register(context.Context, income.RegisterInput) (income.Income, error) {
 	return income.Income{}, errors.New("connection refused")
 }
 
+func (failingIncomes) List(context.Context, string) ([]income.Income, error) {
+	return nil, errors.New("connection refused")
+}
+
 func TestRegisterIncomeInternalError(t *testing.T) {
-	rec := send(NewRouter(Services{Incomes: failingRegistrar{}}), http.MethodPost, "/periods/2026-07/incomes", incomeBody)
+	rec := send(NewRouter(Services{Incomes: failingIncomes{}}), http.MethodPost, "/periods/2026-07/incomes", incomeBody)
 
 	p := assertProblem(t, rec, http.StatusInternalServerError)
 	if strings.Contains(p.Detail, "connection refused") {
 		t.Error("internal error details must not leak to the client")
+	}
+}
+
+func TestContributionAndListIncomes(t *testing.T) {
+	h := newTestRouter(t)
+
+	body := `{"currency": "PEN", "amount": "108.00", "kind": "extra", "category_id": "loans", "received_on": "2026-08-01"}`
+	rec := send(h, http.MethodPost, "/periods/2026-07/incomes", body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusCreated, rec.Body)
+	}
+	send(h, http.MethodPost, "/periods/2026-07/incomes", incomeBody)
+
+	var list []Income
+	decode(t, send(h, http.MethodGet, "/periods/2026-07/incomes", ""), &list)
+	if len(list) != 2 {
+		t.Fatalf("got %d incomes, want 2", len(list))
+	}
+	var contribution Income
+	for _, in := range list {
+		if in.Kind == "extra" {
+			contribution = in
+		}
+	}
+	if contribution.CategoryID != "loans" || contribution.Amount != "108.00" {
+		t.Errorf("contribution = %+v", contribution)
+	}
+
+	// The category now has an entry, so it can't leave the period.
+	assertProblem(t, send(h, http.MethodDelete, "/periods/2026-07/categories/loans", ""), http.StatusConflict)
+}
+
+func TestContributionErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"category on a salary", `{"currency": "USD", "amount": "1", "kind": "salary", "category_id": "loans", "received_on": "2026-07-31"}`},
+		{"unknown category", `{"currency": "USD", "amount": "1", "kind": "extra", "category_id": "nope", "received_on": "2026-07-31"}`},
+		{"system category", `{"currency": "USD", "amount": "1", "kind": "extra", "category_id": "exchange", "received_on": "2026-07-31"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertProblem(t, send(newTestRouter(t), http.MethodPost, "/periods/2026-07/incomes", tt.body), http.StatusUnprocessableEntity)
+		})
 	}
 }

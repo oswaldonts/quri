@@ -39,10 +39,13 @@ func parseKind(s string) (Kind, error) {
 
 // Income is money received for a budget period in a single currency.
 type Income struct {
-	ID          string
-	Period      period.Period
-	Amount      money.Money
-	Kind        Kind
+	ID     string
+	Period period.Period
+	Amount money.Money
+	Kind   Kind
+	// CategoryID is optional and only for KindExtra: the category the extra money
+	// is contributed to (an "aporte"), e.g. an exchange gain assigned to Créditos.
+	CategoryID  string
 	Description string
 	ReceivedOn  time.Time
 	CreatedAt   time.Time

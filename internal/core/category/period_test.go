@@ -155,7 +155,7 @@ func TestEnsureInPeriod(t *testing.T) {
 func TestDeactivateCategoryWithExpenses(t *testing.T) {
 	repo := newFakeRepo(market, exchange)
 	aug, _ := period.Parse("2026-08")
-	repo.withExpenses[aug] = []string{"market"}
+	repo.withEntries[aug] = []string{"market"}
 
 	_, err := newTestService(repo).Deactivate(context.Background(), "2026-08", "market")
 	if !errors.Is(err, ErrInUse) {

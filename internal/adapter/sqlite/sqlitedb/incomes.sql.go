@@ -7,11 +7,12 @@ package sqlitedb
 
 import (
 	"context"
+	"database/sql"
 )
 
 const insertIncome = `-- name: InsertIncome :exec
-INSERT INTO incomes (id, period, currency, amount_minor, kind, description, received_on, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO incomes (id, period, currency, amount_minor, kind, description, received_on, created_at, category_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertIncomeParams struct {
@@ -23,6 +24,7 @@ type InsertIncomeParams struct {
 	Description string
 	ReceivedOn  string
 	CreatedAt   string
+	CategoryID  sql.NullString
 }
 
 func (q *Queries) InsertIncome(ctx context.Context, arg InsertIncomeParams) error {
@@ -35,6 +37,47 @@ func (q *Queries) InsertIncome(ctx context.Context, arg InsertIncomeParams) erro
 		arg.Description,
 		arg.ReceivedOn,
 		arg.CreatedAt,
+		arg.CategoryID,
 	)
 	return err
+}
+
+const listIncomesByPeriod = `-- name: ListIncomesByPeriod :many
+SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id
+FROM incomes
+WHERE period = ?
+ORDER BY received_on, created_at
+`
+
+func (q *Queries) ListIncomesByPeriod(ctx context.Context, period string) ([]Income, error) {
+	rows, err := q.db.QueryContext(ctx, listIncomesByPeriod, period)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Income{}
+	for rows.Next() {
+		var i Income
+		if err := rows.Scan(
+			&i.ID,
+			&i.Period,
+			&i.Currency,
+			&i.AmountMinor,
+			&i.Kind,
+			&i.Description,
+			&i.ReceivedOn,
+			&i.CreatedAt,
+			&i.CategoryID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

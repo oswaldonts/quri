@@ -10,22 +10,23 @@ import (
 	"database/sql"
 )
 
-const categoryHasExpenses = `-- name: CategoryHasExpenses :one
-SELECT EXISTS (
-    SELECT 1 FROM expenses WHERE period = ? AND category_id = ?
-) AS has_expenses
+const categoryHasEntries = `-- name: CategoryHasEntries :one
+SELECT EXISTS (SELECT 1 FROM expenses WHERE expenses.period = ?1 AND expenses.category_id = ?2)
+    OR EXISTS (SELECT 1 FROM incomes WHERE incomes.period = ?1 AND incomes.category_id = ?2)
+    AS has_entries
 `
 
-type CategoryHasExpensesParams struct {
+type CategoryHasEntriesParams struct {
 	Period     string
 	CategoryID string
 }
 
-func (q *Queries) CategoryHasExpenses(ctx context.Context, arg CategoryHasExpensesParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, categoryHasExpenses, arg.Period, arg.CategoryID)
-	var has_expenses bool
-	err := row.Scan(&has_expenses)
-	return has_expenses, err
+// Expenses or contributions (extra incomes assigned to the category) in the period.
+func (q *Queries) CategoryHasEntries(ctx context.Context, arg CategoryHasEntriesParams) (sql.NullBool, error) {
+	row := q.db.QueryRowContext(ctx, categoryHasEntries, arg.Period, arg.CategoryID)
+	var has_entries sql.NullBool
+	err := row.Scan(&has_entries)
+	return has_entries, err
 }
 
 const insertExpense = `-- name: InsertExpense :exec

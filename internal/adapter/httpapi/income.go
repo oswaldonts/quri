@@ -10,10 +10,11 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 )
 
-// IncomeRegistrar is what the HTTP layer needs from the income use cases.
+// IncomeService is what the HTTP layer needs from the income use cases.
 // Declaring it here (on the consumer side) lets handler tests use a fake.
-type IncomeRegistrar interface {
+type IncomeService interface {
 	Register(ctx context.Context, in income.RegisterInput) (income.Income, error)
+	List(ctx context.Context, period string) ([]income.Income, error)
 }
 
 // RegisterIncomeInput is the request of POST /periods/{period}/incomes.
@@ -25,6 +26,7 @@ type RegisterIncomeInput struct {
 		Kind        string       `json:"kind" enum:"salary,extra" doc:"Exchange incomes are created by POST /periods/{period}/exchanges."`
 		Description string       `json:"description,omitempty" maxLength:"200" example:"Sueldo julio"`
 		ReceivedOn  string       `json:"received_on" format:"date" example:"2026-07-31"`
+		CategoryID  string       `json:"category_id,omitempty" example:"loans" doc:"Only for kind extra: the category this money is contributed to (an \"aporte\"). Must be used in the period."`
 	}
 }
 
@@ -36,6 +38,7 @@ type Income struct {
 	Currency    string    `json:"currency" example:"USD"`
 	Amount      string    `json:"amount" example:"1330.00"`
 	Kind        string    `json:"kind" enum:"salary,extra,exchange"`
+	CategoryID  string    `json:"category_id,omitempty" doc:"Set when an extra income is contributed to a category."`
 	Description string    `json:"description"`
 	ReceivedOn  string    `json:"received_on" format:"date" example:"2026-07-31"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -46,6 +49,11 @@ type IncomeOutput struct {
 	Body Income
 }
 
+// IncomeListOutput is the response of GET /periods/{period}/incomes.
+type IncomeListOutput struct {
+	Body []Income
+}
+
 func toIncome(in income.Income) Income {
 	return Income{
 		ID:          in.ID,
@@ -54,19 +62,21 @@ func toIncome(in income.Income) Income {
 		Currency:    string(in.Amount.Currency()),
 		Amount:      in.Amount.String(),
 		Kind:        string(in.Kind),
+		CategoryID:  in.CategoryID,
 		Description: in.Description,
 		ReceivedOn:  in.ReceivedOn.Format(time.DateOnly),
 		CreatedAt:   in.CreatedAt,
 	}
 }
 
-func registerIncomes(api huma.API, incomes IncomeRegistrar) {
+func registerIncomes(api huma.API, incomes IncomeService) {
 	huma.Register(api, huma.Operation{
-		OperationID:   "register-income",
-		Method:        http.MethodPost,
-		Path:          "/periods/{period}/incomes",
-		Summary:       "Register an income",
-		Description:   "Registers money received for the period (salary or extra).",
+		OperationID: "register-income",
+		Method:      http.MethodPost,
+		Path:        "/periods/{period}/incomes",
+		Summary:     "Register an income",
+		Description: "Registers money received for the period (salary or extra). An extra income may be " +
+			"contributed to a category (category_id), e.g. an exchange gain assigned to a loan.",
 		Tags:          []string{tagIncomes},
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusUnprocessableEntity},
@@ -78,10 +88,31 @@ func registerIncomes(api huma.API, incomes IncomeRegistrar) {
 			Kind:        in.Body.Kind,
 			Description: in.Body.Description,
 			ReceivedOn:  in.Body.ReceivedOn,
+			CategoryID:  in.Body.CategoryID,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "register income", err)
 		}
 		return &IncomeOutput{Body: toIncome(inc)}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "list-incomes",
+		Method:      http.MethodGet,
+		Path:        "/periods/{period}/incomes",
+		Summary:     "List the incomes of a period",
+		Description: "Ordered by date, including the ones created by exchanges.",
+		Tags:        []string{tagIncomes},
+		Errors:      []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *PeriodParam) (*IncomeListOutput, error) {
+		incs, err := incomes.List(ctx, in.Period)
+		if err != nil {
+			return nil, toHTTPError(ctx, "list incomes", err)
+		}
+		out := &IncomeListOutput{Body: make([]Income, 0, len(incs))}
+		for _, inc := range incs {
+			out.Body = append(out.Body, toIncome(inc))
+		}
+		return out, nil
 	})
 }

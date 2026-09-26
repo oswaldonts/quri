@@ -38,14 +38,14 @@ func TestExpenseRepository(t *testing.T) {
 		t.Errorf("round trip = %+v", e)
 	}
 
-	if has, _ := categories.HasExpenses(ctx, july, "market"); !has {
-		t.Error("HasExpenses(market) = false, want true")
+	if has, _ := categories.HasEntries(ctx, july, "market"); !has {
+		t.Error("HasEntries(market) = false, want true")
 	}
-	if has, _ := categories.HasExpenses(ctx, july, "travel"); has {
-		t.Error("HasExpenses(travel) = true, want false")
+	if has, _ := categories.HasEntries(ctx, july, "travel"); has {
+		t.Error("HasEntries(travel) = true, want false")
 	}
 	aug, _ := period.Parse("2026-08")
-	if has, _ := categories.HasExpenses(ctx, aug, "market"); has {
+	if has, _ := categories.HasEntries(ctx, aug, "market"); has {
 		t.Error("HasExpenses in another period = true, want false")
 	}
 
