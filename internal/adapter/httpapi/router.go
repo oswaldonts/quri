@@ -61,6 +61,7 @@ func newConfig() huma.Config {
 	config := huma.DefaultConfig(apiTitle, apiVersion)
 	config.Info.Description = apiDescription
 	config.DocsRenderer = huma.DocsRendererSwaggerUI
+	config.Servers = []*huma.Server{{URL: "/", Description: "Current server"}}
 
 	// The default hooks add a "$schema" field to every response body; keep responses clean.
 	config.CreateHooks = nil
