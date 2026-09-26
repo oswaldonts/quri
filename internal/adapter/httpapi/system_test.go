@@ -30,6 +30,8 @@ func TestDocs(t *testing.T) {
 	for _, want := range []string{
 		"openapi: 3.1.0",
 		"/health:",
+		"/categories:",
+		"/categories/{id}:",
 		"/periods/{period}/incomes:",
 		"/periods/{period}/rates/{pair}:",
 		"/periods/{period}/exchanges:",

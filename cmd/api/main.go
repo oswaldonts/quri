@@ -12,6 +12,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 )
@@ -39,6 +40,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	defer db.Close()
 
 	// Wiring: adapters are created here and injected into the core.
+	categoryService := category.NewService(sqlite.NewCategoryRepository(db))
 	incomeService := income.NewService(sqlite.NewIncomeRepository(db))
 	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db))
 
@@ -46,9 +48,10 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	srv := &http.Server{
 		Addr: addr,
 		Handler: httpapi.NewRouter(httpapi.Services{
-			Incomes:   incomeService,
-			Rates:     exchangeService,
-			Exchanges: exchangeService,
+			Categories: categoryService,
+			Incomes:    incomeService,
+			Rates:      exchangeService,
+			Exchanges:  exchangeService,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

@@ -4,6 +4,20 @@
 
 package sqlitedb
 
+import (
+	"database/sql"
+)
+
+type Category struct {
+	ID         string
+	Name       string
+	NameKey    string
+	GroupKey   string
+	Committed  int64
+	ArchivedAt sql.NullString
+	CreatedAt  string
+}
+
 type Exchange struct {
 	ID              string
 	Period          string

@@ -33,9 +33,10 @@ amount is registered automatically as an income of kind "exchange".`
 
 // Services groups the use cases the HTTP layer depends on.
 type Services struct {
-	Incomes   IncomeRegistrar
-	Rates     RateManager
-	Exchanges ExchangeRegistrar
+	Categories CategoryCatalog
+	Incomes    IncomeRegistrar
+	Rates      RateManager
+	Exchanges  ExchangeRegistrar
 }
 
 // NewRouter builds the HTTP handler with all routes, middlewares and docs.
@@ -50,6 +51,7 @@ func NewRouter(s Services) http.Handler {
 	api := humachi.New(r, newConfig())
 
 	registerHealth(api)
+	registerCategories(api, s.Categories)
 	registerIncomes(api, s.Incomes)
 	registerRates(api, s.Rates)
 	registerExchanges(api, s.Exchanges)
@@ -68,6 +70,7 @@ func newConfig() huma.Config {
 
 	config.Tags = []*huma.Tag{
 		{Name: tagSystem, Description: "Service status."},
+		{Name: tagCategories, Description: "Global catalog of expense categories. Categories are archived, never deleted."},
 		{Name: tagIncomes, Description: "Money received in a period."},
 		{Name: tagRates, Description: "Exchange rate chosen for each period and currency pair."},
 		{Name: tagExchanges, Description: "Currency conversions made with the period rate."},
@@ -76,8 +79,9 @@ func newConfig() huma.Config {
 }
 
 const (
-	tagSystem    = "System"
-	tagIncomes   = "Incomes"
-	tagRates     = "Rates"
-	tagExchanges = "Exchanges"
+	tagSystem     = "System"
+	tagCategories = "Categories"
+	tagIncomes    = "Incomes"
+	tagRates      = "Rates"
+	tagExchanges  = "Exchanges"
 )
