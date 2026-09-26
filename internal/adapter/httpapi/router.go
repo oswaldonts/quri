@@ -1,12 +1,35 @@
-// Package httpapi exposes the application over HTTP using the chi router.
+// Package httpapi exposes the application over HTTP.
+//
+// Routes are registered with Huma on top of the chi router: each operation is
+// described with Go structs and tags, from which Huma validates requests and
+// generates the OpenAPI 3.1 document (/openapi.yaml) and the docs (/docs).
 package httpapi
 
 import (
 	"net/http"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
+
+const (
+	apiTitle   = "go-income-mgr API"
+	apiVersion = "0.4.0"
+)
+
+const apiDescription = `Personal income and expense manager.
+
+Budgets are organized by **period**: the month the money was earned (YYYY-MM).
+That money is spent during the following month (spend_month).
+
+**Amounts** are decimal strings ("1330.00"), never JSON numbers, to avoid floating
+point rounding. Currencies are ISO 4217 codes.
+
+**Exchanges** convert money with the rate set for the period:
+target = source × rate, truncated to the target currency's minor unit. The converted
+amount is registered automatically as an income of kind "exchange".`
 
 // Services groups the use cases the HTTP layer depends on.
 type Services struct {
@@ -15,7 +38,7 @@ type Services struct {
 	Exchanges ExchangeRegistrar
 }
 
-// NewRouter builds the HTTP handler with all routes and middlewares.
+// NewRouter builds the HTTP handler with all routes, middlewares and docs.
 func NewRouter(s Services) http.Handler {
 	r := chi.NewRouter()
 
@@ -24,18 +47,36 @@ func NewRouter(s Services) http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	r.Get("/health", health)
-	r.Get("/openapi.yaml", openAPISpec)
-	r.Get("/docs", docs)
+	api := humachi.New(r, newConfig())
 
-	r.Route("/periods/{period}", func(r chi.Router) {
-		r.Post("/incomes", registerIncome(s.Incomes))
-
-		r.Put("/rates/{pair}", setRate(s.Rates))
-		r.Get("/rates/{pair}", getRate(s.Rates))
-
-		r.Post("/exchanges", registerExchange(s.Exchanges))
-	})
+	registerHealth(api)
+	registerIncomes(api, s.Incomes)
+	registerRates(api, s.Rates)
+	registerExchanges(api, s.Exchanges)
 
 	return r
 }
+
+func newConfig() huma.Config {
+	config := huma.DefaultConfig(apiTitle, apiVersion)
+	config.Info.Description = apiDescription
+	config.DocsRenderer = huma.DocsRendererSwaggerUI
+
+	// The default hooks add a "$schema" field to every response body; keep responses clean.
+	config.CreateHooks = nil
+
+	config.Tags = []*huma.Tag{
+		{Name: tagSystem, Description: "Service status."},
+		{Name: tagIncomes, Description: "Money received in a period."},
+		{Name: tagRates, Description: "Exchange rate chosen for each period and currency pair."},
+		{Name: tagExchanges, Description: "Currency conversions made with the period rate."},
+	}
+	return config
+}
+
+const (
+	tagSystem    = "System"
+	tagIncomes   = "Incomes"
+	tagRates     = "Rates"
+	tagExchanges = "Exchanges"
+)

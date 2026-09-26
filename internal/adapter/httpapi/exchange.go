@@ -3,15 +3,13 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 )
 
 // RateManager is what the HTTP layer needs to manage period rates.
@@ -25,20 +23,46 @@ type ExchangeRegistrar interface {
 	Register(ctx context.Context, in exchange.RegisterInput) (exchange.Exchange, error)
 }
 
-type setRateRequest struct {
-	Rate string `json:"rate"`
+// PairParams are the {period} and {pair} path parameters of the rate routes.
+type PairParams struct {
+	PeriodParam
+	Pair string `path:"pair" pattern:"^[A-Z]{3}-[A-Z]{3}$" example:"USD-PEN" doc:"Source and target currency: 1 source = rate × target."`
 }
 
-type rateResponse struct {
-	Period    string    `json:"period"`
-	From      string    `json:"from"`
-	To        string    `json:"to"`
-	Rate      string    `json:"rate"`
+func (p PairParams) toInput() exchange.PairInput {
+	from, to, _ := strings.Cut(p.Pair, "-") // the pattern guarantees the dash
+	return exchange.PairInput{Period: p.Period, From: from, To: to}
+}
+
+// SetRateInput is the request of PUT /periods/{period}/rates/{pair}.
+type SetRateInput struct {
+	PairParams
+	Body struct {
+		Rate string `json:"rate" pattern:"^[0-9]{1,13}(\\.[0-9]{1,4})?$" example:"3.25" doc:"Positive decimal with up to 4 decimal places."`
+	}
+}
+
+// GetRateInput is the request of GET /periods/{period}/rates/{pair}.
+type GetRateInput struct {
+	PairParams
+}
+
+// Rate is a period rate as returned by the API.
+type Rate struct {
+	Period    string    `json:"period" example:"2026-07"`
+	From      string    `json:"from" example:"USD"`
+	To        string    `json:"to" example:"PEN"`
+	Rate      string    `json:"rate" example:"3.2500" doc:"Always formatted with 4 decimal places."`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-func toRateResponse(r exchange.PeriodRate) rateResponse {
-	return rateResponse{
+// RateOutput wraps a Rate as the response body.
+type RateOutput struct {
+	Body Rate
+}
+
+func toRate(r exchange.PeriodRate) Rate {
+	return Rate{
 		Period:    r.Period.String(),
 		From:      string(r.From),
 		To:        string(r.To),
@@ -47,41 +71,42 @@ func toRateResponse(r exchange.PeriodRate) rateResponse {
 	}
 }
 
-type registerExchangeRequest struct {
-	From        string `json:"from"`
-	To          string `json:"to"`
-	Amount      string `json:"amount"`
-	Description string `json:"description"`
-	ExchangedOn string `json:"exchanged_on"`
+// RegisterExchangeInput is the request of POST /periods/{period}/exchanges.
+type RegisterExchangeInput struct {
+	PeriodParam
+	Body struct {
+		From        string `json:"from" enum:"USD,PEN" doc:"Source currency (spent)."`
+		To          string `json:"to" enum:"USD,PEN" doc:"Target currency (received)."`
+		Amount      string `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"1096.00" doc:"Amount spent in the source currency."`
+		Description string `json:"description,omitempty" maxLength:"200" example:"Casa de cambio"`
+		ExchangedOn string `json:"exchanged_on" format:"date" example:"2026-08-01"`
+	}
 }
 
-type moneyResponse struct {
-	Currency string `json:"currency"`
-	Amount   string `json:"amount"`
+// Exchange is an exchange as returned by the API.
+type Exchange struct {
+	ID          string    `json:"id"`
+	Period      string    `json:"period" example:"2026-07"`
+	From        Money     `json:"from"`
+	To          Money     `json:"to"`
+	Rate        string    `json:"rate" example:"3.2500"`
+	Description string    `json:"description"`
+	ExchangedOn string    `json:"exchanged_on" format:"date" example:"2026-08-01"`
+	IncomeID    string    `json:"income_id" doc:"ID of the exchange income created in the target currency."`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
-func toMoneyResponse(m money.Money) moneyResponse {
-	return moneyResponse{Currency: string(m.Currency()), Amount: m.String()}
+// ExchangeOutput wraps an Exchange as the response body.
+type ExchangeOutput struct {
+	Body Exchange
 }
 
-type exchangeResponse struct {
-	ID          string        `json:"id"`
-	Period      string        `json:"period"`
-	From        moneyResponse `json:"from"`
-	To          moneyResponse `json:"to"`
-	Rate        string        `json:"rate"`
-	Description string        `json:"description"`
-	ExchangedOn string        `json:"exchanged_on"`
-	IncomeID    string        `json:"income_id"`
-	CreatedAt   time.Time     `json:"created_at"`
-}
-
-func toExchangeResponse(e exchange.Exchange) exchangeResponse {
-	return exchangeResponse{
+func toExchange(e exchange.Exchange) Exchange {
+	return Exchange{
 		ID:          e.ID,
 		Period:      e.Period.String(),
-		From:        toMoneyResponse(e.From),
-		To:          toMoneyResponse(e.To),
+		From:        toMoney(e.From),
+		To:          toMoney(e.To),
 		Rate:        e.Rate.String(),
 		Description: e.Description,
 		ExchangedOn: e.ExchangedOn.Format(time.DateOnly),
@@ -90,90 +115,64 @@ func toExchangeResponse(e exchange.Exchange) exchangeResponse {
 	}
 }
 
-// pairInput reads {period} and {pair} (e.g. "USD-PEN") from the URL.
-func pairInput(r *http.Request) (exchange.PairInput, bool) {
-	from, to, ok := strings.Cut(chi.URLParam(r, "pair"), "-")
-	return exchange.PairInput{Period: chi.URLParam(r, "period"), From: from, To: to}, ok
-}
-
-// setRate handles PUT /periods/{period}/rates/{pair}.
-func setRate(rates RateManager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		pair, ok := pairInput(r)
-		if !ok {
-			writeError(w, http.StatusBadRequest, "pair must look like USD-PEN")
-			return
-		}
-		var req setRateRequest
-		if err := decodeJSON(w, r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
-			return
-		}
-
-		pr, err := rates.SetRate(r.Context(), exchange.SetRateInput{PairInput: pair, Rate: req.Rate})
+func registerRates(api huma.API, rates RateManager) {
+	huma.Register(api, huma.Operation{
+		OperationID: "set-rate",
+		Method:      http.MethodPut,
+		Path:        "/periods/{period}/rates/{pair}",
+		Summary:     "Set the rate of a period",
+		Description: "Creates or replaces the rate. Exchanges already registered keep the rate they were made with.",
+		Tags:        []string{tagRates},
+		Errors:      []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *SetRateInput) (*RateOutput, error) {
+		pr, err := rates.SetRate(ctx, exchange.SetRateInput{PairInput: in.toInput(), Rate: in.Body.Rate})
 		if err != nil {
-			writeExchangeError(w, r, err, "set rate")
-			return
+			return nil, toHTTPError(ctx, "set rate", err)
 		}
-		writeJSON(w, http.StatusOK, toRateResponse(pr))
-	}
-}
+		return &RateOutput{Body: toRate(pr)}, nil
+	})
 
-// getRate handles GET /periods/{period}/rates/{pair}.
-func getRate(rates RateManager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		pair, ok := pairInput(r)
-		if !ok {
-			writeError(w, http.StatusBadRequest, "pair must look like USD-PEN")
-			return
-		}
-
-		pr, err := rates.Rate(r.Context(), pair)
+	huma.Register(api, huma.Operation{
+		OperationID: "get-rate",
+		Method:      http.MethodGet,
+		Path:        "/periods/{period}/rates/{pair}",
+		Summary:     "Get the rate of a period",
+		Tags:        []string{tagRates},
+		Errors:      []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *GetRateInput) (*RateOutput, error) {
+		pr, err := rates.Rate(ctx, in.toInput())
 		if errors.Is(err, exchange.ErrRateNotFound) {
-			writeError(w, http.StatusNotFound, err.Error())
-			return
+			return nil, huma.Error404NotFound(err.Error())
 		}
 		if err != nil {
-			writeExchangeError(w, r, err, "get rate")
-			return
+			return nil, toHTTPError(ctx, "get rate", err)
 		}
-		writeJSON(w, http.StatusOK, toRateResponse(pr))
-	}
+		return &RateOutput{Body: toRate(pr)}, nil
+	})
 }
 
-// registerExchange handles POST /periods/{period}/exchanges.
-func registerExchange(exchanges ExchangeRegistrar) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req registerExchangeRequest
-		if err := decodeJSON(w, r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
-			return
-		}
-
-		ex, err := exchanges.Register(r.Context(), exchange.RegisterInput{
-			PairInput:   exchange.PairInput{Period: chi.URLParam(r, "period"), From: req.From, To: req.To},
-			Amount:      req.Amount,
-			Description: req.Description,
-			ExchangedOn: req.ExchangedOn,
+func registerExchanges(api huma.API, exchanges ExchangeRegistrar) {
+	huma.Register(api, huma.Operation{
+		OperationID: "register-exchange",
+		Method:      http.MethodPost,
+		Path:        "/periods/{period}/exchanges",
+		Summary:     "Register an exchange",
+		Description: "Converts amount with the period rate (truncating), stores the exchange and registers " +
+			"the converted amount as an income of kind \"exchange\" in the target currency. " +
+			"Returns 409 if the period has no rate for the pair.",
+		Tags:          []string{tagExchanges},
+		DefaultStatus: http.StatusCreated,
+		Errors:        []int{http.StatusConflict, http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *RegisterExchangeInput) (*ExchangeOutput, error) {
+		ex, err := exchanges.Register(ctx, exchange.RegisterInput{
+			PairInput:   exchange.PairInput{Period: in.Period, From: in.Body.From, To: in.Body.To},
+			Amount:      in.Body.Amount,
+			Description: in.Body.Description,
+			ExchangedOn: in.Body.ExchangedOn,
 		})
 		if err != nil {
-			writeExchangeError(w, r, err, "register exchange")
-			return
+			return nil, toHTTPError(ctx, "register exchange", err)
 		}
-		writeJSON(w, http.StatusCreated, toExchangeResponse(ex))
-	}
-}
-
-// writeExchangeError maps exchange errors to HTTP status codes.
-func writeExchangeError(w http.ResponseWriter, r *http.Request, err error, op string) {
-	switch {
-	case errors.Is(err, exchange.ErrInvalidInput):
-		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, exchange.ErrRateNotFound):
-		// The request is valid but can't be processed until the rate is set.
-		writeError(w, http.StatusConflict, err.Error())
-	default:
-		slog.ErrorContext(r.Context(), op, "error", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-	}
+		return &ExchangeOutput{Body: toExchange(ex)}, nil
+	})
 }

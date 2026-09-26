@@ -2,18 +2,15 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/memory"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 )
 
-const validBody = `{
+const incomeBody = `{
 	"currency": "USD",
 	"amount": "1330.00",
 	"kind": "salary",
@@ -21,34 +18,18 @@ const validBody = `{
 	"received_on": "2026-07-31"
 }`
 
-// newIncomeTestRouter wires the real service with the in-memory repository.
-func newIncomeTestRouter() http.Handler {
-	return NewRouter(Services{Incomes: income.NewService(memory.NewIncomeRepository())})
-}
-
-func post(h http.Handler, path, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	return rec
-}
-
 func TestRegisterIncome(t *testing.T) {
-	rec := post(newIncomeTestRouter(), "/periods/2026-07/incomes", validBody)
+	rec := send(newTestRouter(), http.MethodPost, "/periods/2026-07/incomes", incomeBody)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusCreated, rec.Body)
 	}
-
-	var got incomeResponse
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	var got Income
+	decode(t, rec, &got)
 	if got.ID == "" {
 		t.Error("ID is empty")
 	}
-	want := incomeResponse{
+	want := Income{
 		ID:          got.ID,
 		Period:      "2026-07",
 		SpendMonth:  "2026-08",
@@ -64,30 +45,29 @@ func TestRegisterIncome(t *testing.T) {
 	}
 }
 
-func TestRegisterIncomeBadRequest(t *testing.T) {
+func TestRegisterIncomeErrors(t *testing.T) {
 	tests := []struct {
-		name string
-		path string
-		body string
+		name       string
+		path       string
+		body       string
+		wantStatus int
 	}{
-		{"invalid period", "/periods/2026-7/incomes", validBody},
-		{"unsupported currency", "/periods/2026-07/incomes", strings.Replace(validBody, `"USD"`, `"$"`, 1)},
-		{"float amount", "/periods/2026-07/incomes", strings.Replace(validBody, `"1330.00"`, `1330.00`, 1)},
-		{"unknown field", "/periods/2026-07/incomes", `{"currency": "USD", "amont": "10"}`},
-		{"malformed JSON", "/periods/2026-07/incomes", `{"currency": `},
-		{"empty body", "/periods/2026-07/incomes", ``},
+		// Rejected by Huma's schema validation before reaching the core.
+		{"invalid period", "/periods/2026-7/incomes", incomeBody, http.StatusUnprocessableEntity},
+		{"unsupported currency", "/periods/2026-07/incomes", strings.Replace(incomeBody, `"USD"`, `"$"`, 1), http.StatusUnprocessableEntity},
+		{"amount as number", "/periods/2026-07/incomes", strings.Replace(incomeBody, `"1330.00"`, `1330.00`, 1), http.StatusUnprocessableEntity},
+		{"exchange kind", "/periods/2026-07/incomes", strings.Replace(incomeBody, `"salary"`, `"exchange"`, 1), http.StatusUnprocessableEntity},
+		{"unknown field", "/periods/2026-07/incomes", `{"currency": "USD", "amont": "10"}`, http.StatusUnprocessableEntity},
+		// Passes the schema but is rejected by the core.
+		{"zero amount", "/periods/2026-07/incomes", strings.Replace(incomeBody, `"1330.00"`, `"0"`, 1), http.StatusUnprocessableEntity},
+		// The body can't be parsed at all.
+		{"malformed JSON", "/periods/2026-07/incomes", `{"currency": `, http.StatusBadRequest},
+		{"empty body", "/periods/2026-07/incomes", ``, http.StatusBadRequest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := post(newIncomeTestRouter(), tt.path, tt.body)
-
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusBadRequest, rec.Body)
-			}
-			var got errorResponse
-			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil || got.Error == "" {
-				t.Errorf("want a JSON error message, got %q (decode err: %v)", rec.Body, err)
-			}
+			rec := send(newTestRouter(), http.MethodPost, tt.path, tt.body)
+			assertProblem(t, rec, tt.wantStatus)
 		})
 	}
 }
@@ -100,12 +80,10 @@ func (failingRegistrar) Register(context.Context, income.RegisterInput) (income.
 }
 
 func TestRegisterIncomeInternalError(t *testing.T) {
-	rec := post(NewRouter(Services{Incomes: failingRegistrar{}}), "/periods/2026-07/incomes", validBody)
+	rec := send(NewRouter(Services{Incomes: failingRegistrar{}}), http.MethodPost, "/periods/2026-07/incomes", incomeBody)
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
-	}
-	if strings.Contains(rec.Body.String(), "connection refused") {
+	p := assertProblem(t, rec, http.StatusInternalServerError)
+	if strings.Contains(p.Detail, "connection refused") {
 		t.Error("internal error details must not leak to the client")
 	}
 }

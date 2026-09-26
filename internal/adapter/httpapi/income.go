@@ -2,12 +2,10 @@ package httpapi
 
 import (
 	"context"
-	"errors"
-	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 )
@@ -18,28 +16,38 @@ type IncomeRegistrar interface {
 	Register(ctx context.Context, in income.RegisterInput) (income.Income, error)
 }
 
-type registerIncomeRequest struct {
-	Currency    string `json:"currency"`
-	Amount      string `json:"amount"`
-	Kind        string `json:"kind"`
-	Description string `json:"description"`
-	ReceivedOn  string `json:"received_on"`
+// RegisterIncomeInput is the request of POST /periods/{period}/incomes.
+type RegisterIncomeInput struct {
+	PeriodParam
+	Body struct {
+		Currency    string `json:"currency" enum:"USD,PEN" doc:"ISO 4217 currency code."`
+		Amount      string `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"1330.00" doc:"Decimal string with up to 2 decimal places."`
+		Kind        string `json:"kind" enum:"salary,extra" doc:"Exchange incomes are created by POST /periods/{period}/exchanges."`
+		Description string `json:"description,omitempty" maxLength:"200" example:"Sueldo julio"`
+		ReceivedOn  string `json:"received_on" format:"date" example:"2026-07-31"`
+	}
 }
 
-type incomeResponse struct {
+// Income is an income as returned by the API.
+type Income struct {
 	ID          string    `json:"id"`
-	Period      string    `json:"period"`
-	SpendMonth  string    `json:"spend_month"`
-	Currency    string    `json:"currency"`
-	Amount      string    `json:"amount"`
-	Kind        string    `json:"kind"`
+	Period      string    `json:"period" example:"2026-07"`
+	SpendMonth  string    `json:"spend_month" example:"2026-08" doc:"Month in which this money is spent."`
+	Currency    string    `json:"currency" example:"USD"`
+	Amount      string    `json:"amount" example:"1330.00"`
+	Kind        string    `json:"kind" enum:"salary,extra,exchange"`
 	Description string    `json:"description"`
-	ReceivedOn  string    `json:"received_on"`
+	ReceivedOn  string    `json:"received_on" format:"date" example:"2026-07-31"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-func toIncomeResponse(in income.Income) incomeResponse {
-	return incomeResponse{
+// IncomeOutput wraps an Income as the response body.
+type IncomeOutput struct {
+	Body Income
+}
+
+func toIncome(in income.Income) Income {
+	return Income{
 		ID:          in.ID,
 		Period:      in.Period.String(),
 		SpendMonth:  in.Period.SpendMonth().String(),
@@ -52,33 +60,28 @@ func toIncomeResponse(in income.Income) incomeResponse {
 	}
 }
 
-// registerIncome handles POST /periods/{period}/incomes.
-func registerIncome(incomes IncomeRegistrar) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req registerIncomeRequest
-		if err := decodeJSON(w, r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
-			return
-		}
-
-		inc, err := incomes.Register(r.Context(), income.RegisterInput{
-			Period:      chi.URLParam(r, "period"),
-			Currency:    req.Currency,
-			Amount:      req.Amount,
-			Kind:        req.Kind,
-			Description: req.Description,
-			ReceivedOn:  req.ReceivedOn,
+func registerIncomes(api huma.API, incomes IncomeRegistrar) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "register-income",
+		Method:        http.MethodPost,
+		Path:          "/periods/{period}/incomes",
+		Summary:       "Register an income",
+		Description:   "Registers money received for the period (salary or extra).",
+		Tags:          []string{tagIncomes},
+		DefaultStatus: http.StatusCreated,
+		Errors:        []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *RegisterIncomeInput) (*IncomeOutput, error) {
+		inc, err := incomes.Register(ctx, income.RegisterInput{
+			Period:      in.Period,
+			Currency:    in.Body.Currency,
+			Amount:      in.Body.Amount,
+			Kind:        in.Body.Kind,
+			Description: in.Body.Description,
+			ReceivedOn:  in.Body.ReceivedOn,
 		})
-		switch {
-		case errors.Is(err, income.ErrInvalidInput):
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		case err != nil:
-			slog.ErrorContext(r.Context(), "register income", "error", err)
-			writeError(w, http.StatusInternalServerError, "internal error")
-			return
+		if err != nil {
+			return nil, toHTTPError(ctx, "register income", err)
 		}
-
-		writeJSON(w, http.StatusCreated, toIncomeResponse(inc))
-	}
+		return &IncomeOutput{Body: toIncome(inc)}, nil
+	})
 }
