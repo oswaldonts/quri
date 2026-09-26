@@ -14,12 +14,17 @@ import (
 
 // fakeRepo is an in-test catalog and period store enforcing the same rules as the real one.
 type fakeRepo struct {
-	byID    map[string]Category
-	periods map[period.Period][]string
+	byID         map[string]Category
+	periods      map[period.Period][]string
+	withExpenses map[period.Period][]string // category IDs with expenses per period
 }
 
 func newFakeRepo(cs ...Category) *fakeRepo {
-	r := &fakeRepo{byID: map[string]Category{}, periods: map[period.Period][]string{}}
+	r := &fakeRepo{
+		byID:         map[string]Category{},
+		periods:      map[period.Period][]string{},
+		withExpenses: map[period.Period][]string{},
+	}
 	for _, c := range cs {
 		r.byID[c.ID] = c
 	}
@@ -85,6 +90,10 @@ func (r *fakeRepo) LatestConfiguredBefore(_ context.Context, p period.Period) (p
 func (r *fakeRepo) ReplacePeriod(_ context.Context, p period.Period, ids []string) error {
 	r.periods[p] = slices.Clone(ids)
 	return nil
+}
+
+func (r *fakeRepo) HasExpenses(_ context.Context, p period.Period, id string) (bool, error) {
+	return slices.Contains(r.withExpenses[p], id), nil
 }
 
 func (r *fakeRepo) Update(_ context.Context, c Category) error {

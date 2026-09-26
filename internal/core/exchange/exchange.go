@@ -1,9 +1,9 @@
 // Package exchange manages the exchange rate chosen for each budget period and
 // the currency exchanges made with it.
 //
-// An exchange is an expense in the source currency; the converted amount
-// (source amount × period rate, truncated) is registered as an income in the
-// target currency.
+// An exchange is an expense in the source currency (system category "exchange");
+// the converted amount (source amount × period rate, truncated) is registered as
+// an income in the target currency.
 package exchange
 
 import (

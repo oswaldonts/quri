@@ -9,6 +9,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
@@ -26,26 +28,29 @@ type RateRepository interface {
 
 // Repository stores exchanges.
 type Repository interface {
-	// Save stores the exchange together with the income it generates, atomically:
-	// either both are saved or neither is.
-	Save(ctx context.Context, e Exchange, in income.Income) error
+	// Save stores the exchange together with the income and the expense it generates,
+	// atomically: either all three are saved or none is.
+	Save(ctx context.Context, e Exchange, in income.Income, out expense.Expense) error
 }
 
 // Service holds the rate and exchange use cases.
 type Service struct {
-	rates     RateRepository
-	exchanges Repository
-	now       func() time.Time
-	newID     func() string
+	rates      RateRepository
+	exchanges  Repository
+	categories expense.CategoryResolver
+	now        func() time.Time
+	newID      func() string
 }
 
-// NewService returns a Service.
-func NewService(rates RateRepository, exchanges Repository) *Service {
+// NewService returns a Service. categories provides the system category that
+// receives the source side of each exchange.
+func NewService(rates RateRepository, exchanges Repository, categories expense.CategoryResolver) *Service {
 	return &Service{
-		rates:     rates,
-		exchanges: exchanges,
-		now:       time.Now,
-		newID:     rand.Text,
+		rates:      rates,
+		exchanges:  exchanges,
+		categories: categories,
+		now:        time.Now,
+		newID:      rand.Text,
 	}
 }
 
@@ -98,8 +103,9 @@ type RegisterInput struct {
 	ExchangedOn string // YYYY-MM-DD
 }
 
-// Register converts Amount with the period rate, stores the exchange and
-// registers the converted amount as an income in the target currency.
+// Register converts Amount with the period rate and stores, in one transaction, the
+// exchange, an expense of Amount in the exchange category (source currency) and an
+// income of the converted amount (target currency).
 func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, error) {
 	p, from, to, err := parsePair(in.PairInput)
 	if err != nil {
@@ -137,6 +143,11 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, err
 		return Exchange{}, invalid(fmt.Errorf("%s %s converts to %s %s", amount, from, converted, to))
 	}
 
+	// The source amount is an expense in the system exchange category of the period.
+	if _, err := s.categories.EnsureInPeriod(ctx, p, category.ExchangeCategoryID); err != nil {
+		return Exchange{}, fmt.Errorf("exchange category: %w", err)
+	}
+
 	now := s.now().UTC()
 	inc := income.Income{
 		ID:          s.newID(),
@@ -159,7 +170,18 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, err
 		CreatedAt:   now,
 	}
 
-	if err := s.exchanges.Save(ctx, ex, inc); err != nil {
+	out := expense.Expense{
+		ID:          s.newID(),
+		Period:      p,
+		CategoryID:  category.ExchangeCategoryID,
+		Amount:      amount,
+		Description: fmt.Sprintf("Exchange to %s %s at %s", converted, to, pr.Rate),
+		SpentOn:     exchangedOn,
+		ExchangeID:  ex.ID,
+		CreatedAt:   now,
+	}
+
+	if err := s.exchanges.Save(ctx, ex, inc, out); err != nil {
 		return Exchange{}, fmt.Errorf("save exchange: %w", err)
 	}
 	return ex, nil

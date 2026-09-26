@@ -5,6 +5,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
 
 var (
@@ -124,5 +126,39 @@ func TestPeriodErrors(t *testing.T) {
 	}
 	if _, err := svc.Deactivate(ctx, "2026-8", "market"); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("deactivate bad period: err = %v, want %v", err, ErrInvalidInput)
+	}
+}
+
+func TestEnsureInPeriod(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(newFakeRepo(market, travel, exchange))
+	aug, _ := period.Parse("2026-08")
+
+	got, err := svc.EnsureInPeriod(ctx, aug, "market")
+	if err != nil || got.ID != "market" {
+		t.Fatalf("EnsureInPeriod = %+v, %v", got, err)
+	}
+	// Using a category fixes the period's own list.
+	if pc, _ := svc.ForPeriod(ctx, "2026-08"); pc.Source != SourceOwn {
+		t.Errorf("source = %s, want own after first use", pc.Source)
+	}
+
+	_, _ = svc.Deactivate(ctx, "2026-08", "travel")
+	if _, err := svc.EnsureInPeriod(ctx, aug, "travel"); !errors.Is(err, ErrNotInPeriod) {
+		t.Errorf("inactive category: err = %v, want %v", err, ErrNotInPeriod)
+	}
+	if _, err := svc.EnsureInPeriod(ctx, aug, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown category: err = %v, want %v", err, ErrNotFound)
+	}
+}
+
+func TestDeactivateCategoryWithExpenses(t *testing.T) {
+	repo := newFakeRepo(market, exchange)
+	aug, _ := period.Parse("2026-08")
+	repo.withExpenses[aug] = []string{"market"}
+
+	_, err := newTestService(repo).Deactivate(context.Background(), "2026-08", "market")
+	if !errors.Is(err, ErrInUse) {
+		t.Fatalf("err = %v, want %v", err, ErrInUse)
 	}
 }

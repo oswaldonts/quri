@@ -35,6 +35,7 @@ amount is registered automatically as an income of kind "exchange".`
 type Services struct {
 	Categories CategoryCatalog
 	Incomes    IncomeRegistrar
+	Expenses   ExpenseService
 	Rates      RateManager
 	Exchanges  ExchangeRegistrar
 }
@@ -53,6 +54,7 @@ func NewRouter(s Services) http.Handler {
 	registerHealth(api)
 	registerCategories(api, s.Categories)
 	registerIncomes(api, s.Incomes)
+	registerExpenses(api, s.Expenses)
 	registerRates(api, s.Rates)
 	registerExchanges(api, s.Exchanges)
 
@@ -72,6 +74,7 @@ func newConfig() huma.Config {
 		{Name: tagSystem, Description: "Service status."},
 		{Name: tagCategories, Description: "Global catalog of expense categories. Categories are archived, never deleted."},
 		{Name: tagIncomes, Description: "Money received in a period."},
+		{Name: tagExpenses, Description: "Money spent in a period, by category."},
 		{Name: tagRates, Description: "Exchange rate chosen for each period and currency pair."},
 		{Name: tagExchanges, Description: "Currency conversions made with the period rate."},
 	}
@@ -82,6 +85,7 @@ const (
 	tagSystem     = "System"
 	tagCategories = "Categories"
 	tagIncomes    = "Incomes"
+	tagExpenses   = "Expenses"
 	tagRates      = "Rates"
 	tagExchanges  = "Exchanges"
 )

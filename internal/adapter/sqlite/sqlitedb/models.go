@@ -32,6 +32,18 @@ type Exchange struct {
 	CreatedAt       string
 }
 
+type Expense struct {
+	ID          string
+	Period      string
+	CategoryID  string
+	Currency    string
+	AmountMinor int64
+	Description string
+	SpentOn     string
+	ExchangeID  sql.NullString
+	CreatedAt   string
+}
+
 type Income struct {
 	ID          string
 	Period      string

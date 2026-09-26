@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
@@ -113,7 +114,7 @@ func TestRateRepository(t *testing.T) {
 	}
 }
 
-func testExchange(t *testing.T, id, incomeID string) (exchange.Exchange, income.Income) {
+func testExchange(t *testing.T, id, incomeID string) (exchange.Exchange, income.Income, expense.Expense) {
 	rate, _ := money.ParseRate("3.25")
 	inc := income.Income{
 		ID:         incomeID,
@@ -133,19 +134,29 @@ func testExchange(t *testing.T, id, incomeID string) (exchange.Exchange, income.
 		IncomeID:    incomeID,
 		CreatedAt:   now,
 	}
-	return ex, inc
+	out := expense.Expense{
+		ID:         "exp-" + id + "-" + incomeID,
+		Period:     july,
+		CategoryID: "exchange",
+		Amount:     ex.From,
+		SpentOn:    now,
+		ExchangeID: id,
+		CreatedAt:  now,
+	}
+	return ex, inc, out
 }
 
 func TestExchangeRepositorySave(t *testing.T) {
 	db := openTestDB(t)
 	repo := NewExchangeRepository(db)
 
-	ex, inc := testExchange(t, "ex-1", "inc-1")
-	if err := repo.Save(context.Background(), ex, inc); err != nil {
+	ex, inc, out := testExchange(t, "ex-1", "inc-1")
+	if err := repo.Save(context.Background(), ex, inc, out); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if count(t, db, "exchanges") != 1 || count(t, db, "incomes") != 1 {
-		t.Errorf("want 1 exchange and 1 income, got %d and %d", count(t, db, "exchanges"), count(t, db, "incomes"))
+	if count(t, db, "exchanges") != 1 || count(t, db, "incomes") != 1 || count(t, db, "expenses") != 1 {
+		t.Errorf("want 1 exchange, 1 income and 1 expense, got %d, %d and %d",
+			count(t, db, "exchanges"), count(t, db, "incomes"), count(t, db, "expenses"))
 	}
 }
 
@@ -153,15 +164,15 @@ func TestExchangeRepositorySaveIsAtomic(t *testing.T) {
 	db := openTestDB(t)
 	repo := NewExchangeRepository(db)
 
-	first, firstIncome := testExchange(t, "ex-1", "inc-1")
-	if err := repo.Save(context.Background(), first, firstIncome); err != nil {
+	first, firstIncome, firstExpense := testExchange(t, "ex-1", "inc-1")
+	if err := repo.Save(context.Background(), first, firstIncome, firstExpense); err != nil {
 		t.Fatalf("first Save: %v", err)
 	}
 
 	// Same exchange ID, new income: the income insert succeeds, the exchange insert
 	// fails, and the transaction must roll the income back.
-	dup, newIncome := testExchange(t, "ex-1", "inc-2")
-	if err := repo.Save(context.Background(), dup, newIncome); err == nil {
+	dup, newIncome, newExpense := testExchange(t, "ex-1", "inc-2")
+	if err := repo.Save(context.Background(), dup, newIncome, newExpense); err == nil {
 		t.Fatal("saving a duplicated exchange ID must fail")
 	}
 	if got := count(t, db, "incomes"); got != 1 {

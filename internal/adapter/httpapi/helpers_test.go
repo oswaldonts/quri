@@ -12,6 +12,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 )
 
@@ -25,10 +26,12 @@ func newTestRouter(t *testing.T) http.Handler {
 	t.Cleanup(func() { _ = db.Close() })
 
 	categoryRepo := sqlite.NewCategoryRepository(db)
-	exchangeSvc := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db))
+	categorySvc := category.NewService(categoryRepo, categoryRepo)
+	exchangeSvc := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categorySvc)
 	return NewRouter(Services{
-		Categories: category.NewService(categoryRepo, categoryRepo),
+		Categories: categorySvc,
 		Incomes:    income.NewService(sqlite.NewIncomeRepository(db)),
+		Expenses:   expense.NewService(sqlite.NewExpenseRepository(db), categorySvc),
 		Rates:      exchangeSvc,
 		Exchanges:  exchangeSvc,
 	})

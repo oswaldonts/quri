@@ -153,6 +153,11 @@ func (r *CategoryRepository) ReplacePeriod(ctx context.Context, p period.Period,
 	return tx.Commit()
 }
 
+// HasExpenses reports whether the category has expenses in the period.
+func (r *CategoryRepository) HasExpenses(ctx context.Context, p period.Period, id string) (bool, error) {
+	return r.q.CategoryHasExpenses(ctx, sqlitedb.CategoryHasExpensesParams{Period: p.String(), CategoryID: id})
+}
+
 func toCategory(row sqlitedb.Category) (category.Category, error) {
 	createdAt, err := parseTime(row.CreatedAt)
 	if err != nil {

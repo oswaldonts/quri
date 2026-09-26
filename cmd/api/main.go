@@ -14,6 +14,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 )
 
@@ -43,7 +44,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	categoryRepo := sqlite.NewCategoryRepository(db)
 	categoryService := category.NewService(categoryRepo, categoryRepo)
 	incomeService := income.NewService(sqlite.NewIncomeRepository(db))
-	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db))
+	expenseService := expense.NewService(sqlite.NewExpenseRepository(db), categoryService)
+	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService)
 
 	addr := ":" + getenv("PORT", "8080")
 	srv := &http.Server{
@@ -51,6 +53,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Handler: httpapi.NewRouter(httpapi.Services{
 			Categories: categoryService,
 			Incomes:    incomeService,
+			Expenses:   expenseService,
 			Rates:      exchangeService,
 			Exchanges:  exchangeService,
 		}),

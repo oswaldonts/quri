@@ -9,6 +9,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite/sqlitedb"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
@@ -92,8 +93,8 @@ func NewExchangeRepository(db *sql.DB) *ExchangeRepository {
 	return &ExchangeRepository{db: db}
 }
 
-// Save inserts the exchange and its income in a single transaction.
-func (r *ExchangeRepository) Save(ctx context.Context, e exchange.Exchange, in income.Income) error {
+// Save inserts the exchange, its income and its expense in a single transaction.
+func (r *ExchangeRepository) Save(ctx context.Context, e exchange.Exchange, in income.Income, out expense.Expense) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -102,7 +103,7 @@ func (r *ExchangeRepository) Save(ctx context.Context, e exchange.Exchange, in i
 	defer func() { _ = tx.Rollback() }()
 
 	q := sqlitedb.New(tx)
-	// The income goes first: exchanges.income_id references it.
+	// Order follows the foreign keys: exchanges.income_id → incomes, expenses.exchange_id → exchanges.
 	if err := insertIncome(ctx, q, in); err != nil {
 		return fmt.Errorf("insert income: %w", err)
 	}
@@ -120,6 +121,9 @@ func (r *ExchangeRepository) Save(ctx context.Context, e exchange.Exchange, in i
 		CreatedAt:       formatTime(e.CreatedAt),
 	}); err != nil {
 		return fmt.Errorf("insert exchange: %w", err)
+	}
+	if err := insertExpense(ctx, q, out); err != nil {
+		return fmt.Errorf("insert expense: %w", err)
 	}
 	return tx.Commit()
 }

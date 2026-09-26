@@ -9,6 +9,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 )
@@ -34,14 +35,16 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 	switch {
 	case errors.Is(err, income.ErrInvalidInput),
 		errors.Is(err, exchange.ErrInvalidInput),
-		errors.Is(err, category.ErrInvalidInput):
+		errors.Is(err, category.ErrInvalidInput),
+		errors.Is(err, expense.ErrInvalidInput):
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, category.ErrNotFound):
 		return huma.Error404NotFound(err.Error())
 	case errors.Is(err, exchange.ErrRateNotFound),
 		errors.Is(err, category.ErrNameTaken),
 		errors.Is(err, category.ErrSystemCategory),
-		errors.Is(err, category.ErrArchived):
+		errors.Is(err, category.ErrArchived),
+		errors.Is(err, category.ErrInUse):
 		// The request is valid but conflicts with the current state.
 		return huma.Error409Conflict(err.Error())
 	default:

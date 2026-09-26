@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
@@ -33,16 +35,25 @@ func (f *fakeRates) FindRate(_ context.Context, p period.Period, from, to money.
 	return r, nil
 }
 
-// fakeExchanges records exchanges and the incomes saved with them.
+// fakeExchanges records exchanges and the incomes and expenses saved with them.
 type fakeExchanges struct {
-	saved   []Exchange
-	incomes []income.Income
+	saved    []Exchange
+	incomes  []income.Income
+	expenses []expense.Expense
 }
 
-func (f *fakeExchanges) Save(_ context.Context, e Exchange, in income.Income) error {
+func (f *fakeExchanges) Save(_ context.Context, e Exchange, in income.Income, out expense.Expense) error {
 	f.saved = append(f.saved, e)
 	f.incomes = append(f.incomes, in)
+	f.expenses = append(f.expenses, out)
 	return nil
+}
+
+// allCategories accepts every category in every period.
+type allCategories struct{}
+
+func (allCategories) EnsureInPeriod(_ context.Context, _ period.Period, id string) (category.Category, error) {
+	return category.Category{ID: id, Group: category.GroupSystem}, nil
 }
 
 type fixture struct {
@@ -52,7 +63,7 @@ type fixture struct {
 
 func newFixture() fixture {
 	f := fixture{exchanges: &fakeExchanges{}}
-	f.svc = NewService(&fakeRates{rates: map[string]PeriodRate{}}, f.exchanges)
+	f.svc = NewService(&fakeRates{rates: map[string]PeriodRate{}}, f.exchanges, allCategories{})
 	f.svc.now = func() time.Time { return time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC) }
 	ids := 0
 	f.svc.newID = func() string { ids++; return fmt.Sprintf("id-%d", ids) }
@@ -153,6 +164,16 @@ func TestRegister(t *testing.T) {
 	}
 	if inc.Period.String() != "2026-07" {
 		t.Errorf("income period = %s, want 2026-07", inc.Period)
+	}
+
+	// The source amount must be registered as an expense in the exchange category.
+	if len(f.exchanges.expenses) != 1 {
+		t.Fatalf("saved %d expenses, want 1", len(f.exchanges.expenses))
+	}
+	out := f.exchanges.expenses[0]
+	if out.CategoryID != category.ExchangeCategoryID || out.ExchangeID != ex.ID ||
+		out.Amount.String() != "1096.00" || out.Amount.Currency() != money.USD {
+		t.Errorf("expense = %+v, want 1096.00 USD in %q linked to the exchange", out, category.ExchangeCategoryID)
 	}
 }
 
