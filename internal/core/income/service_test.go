@@ -80,6 +80,7 @@ func TestRegisterValidation(t *testing.T) {
 		{"zero amount", func(in *RegisterInput) { in.Amount = "0" }},
 		{"negative amount", func(in *RegisterInput) { in.Amount = "-5" }},
 		{"unknown kind", func(in *RegisterInput) { in.Kind = "bonus" }},
+		{"exchange kind is reserved", func(in *RegisterInput) { in.Kind = "exchange" }},
 		{"long description", func(in *RegisterInput) { in.Description = strings.Repeat("a", 201) }},
 		{"bad received_on", func(in *RegisterInput) { in.ReceivedOn = "31/07/2026" }},
 	}

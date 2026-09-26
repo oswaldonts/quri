@@ -1,0 +1,207 @@
+package exchange
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+)
+
+const maxDescriptionLength = 200
+
+// RateRepository stores one rate per period and currency pair.
+type RateRepository interface {
+	// SaveRate creates or replaces the rate for its period and pair.
+	SaveRate(ctx context.Context, r PeriodRate) error
+	// FindRate returns ErrRateNotFound when no rate was set.
+	FindRate(ctx context.Context, p period.Period, from, to money.Currency) (PeriodRate, error)
+}
+
+// Repository stores exchanges.
+type Repository interface {
+	Save(ctx context.Context, e Exchange) error
+}
+
+// Service holds the rate and exchange use cases.
+type Service struct {
+	rates     RateRepository
+	exchanges Repository
+	incomes   income.Repository
+	now       func() time.Time
+	newID     func() string
+}
+
+// NewService returns a Service. Converted amounts are stored as incomes in incomes.
+func NewService(rates RateRepository, exchanges Repository, incomes income.Repository) *Service {
+	return &Service{
+		rates:     rates,
+		exchanges: exchanges,
+		incomes:   incomes,
+		now:       time.Now,
+		newID:     rand.Text,
+	}
+}
+
+// PairInput identifies a currency pair within a period.
+type PairInput struct {
+	Period string // YYYY-MM
+	From   string // ISO 4217 code of the source currency
+	To     string // ISO 4217 code of the target currency
+}
+
+// SetRateInput carries a new rate for a period and pair.
+type SetRateInput struct {
+	PairInput
+	Rate string // decimal with up to 4 places, e.g. "3.25"
+}
+
+// SetRate creates or updates the rate of a period and pair.
+// Exchanges already registered keep the rate they were made with.
+func (s *Service) SetRate(ctx context.Context, in SetRateInput) (PeriodRate, error) {
+	p, from, to, err := parsePair(in.PairInput)
+	if err != nil {
+		return PeriodRate{}, err
+	}
+	rate, err := money.ParseRate(in.Rate)
+	if err != nil {
+		return PeriodRate{}, invalid(err)
+	}
+
+	r := PeriodRate{Period: p, From: from, To: to, Rate: rate, UpdatedAt: s.now().UTC()}
+	if err := s.rates.SaveRate(ctx, r); err != nil {
+		return PeriodRate{}, fmt.Errorf("save rate: %w", err)
+	}
+	return r, nil
+}
+
+// Rate returns the rate of a period and pair, or ErrRateNotFound.
+func (s *Service) Rate(ctx context.Context, in PairInput) (PeriodRate, error) {
+	p, from, to, err := parsePair(in)
+	if err != nil {
+		return PeriodRate{}, err
+	}
+	return s.findRate(ctx, p, from, to)
+}
+
+// RegisterInput carries the raw values of a new exchange.
+type RegisterInput struct {
+	PairInput
+	Amount      string // amount spent in the source currency, e.g. "1096.00"
+	Description string // optional, up to 200 characters
+	ExchangedOn string // YYYY-MM-DD
+}
+
+// Register converts Amount with the period rate, stores the exchange and
+// registers the converted amount as an income in the target currency.
+func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, error) {
+	p, from, to, err := parsePair(in.PairInput)
+	if err != nil {
+		return Exchange{}, err
+	}
+
+	amount, err := money.Parse(in.Amount, from)
+	if err != nil {
+		return Exchange{}, invalid(err)
+	}
+	if !amount.IsPositive() {
+		return Exchange{}, invalid(errors.New("amount must be greater than zero"))
+	}
+
+	description := strings.TrimSpace(in.Description)
+	if utf8.RuneCountInString(description) > maxDescriptionLength {
+		return Exchange{}, invalid(fmt.Errorf("description longer than %d characters", maxDescriptionLength))
+	}
+
+	exchangedOn, err := time.Parse(time.DateOnly, in.ExchangedOn)
+	if err != nil {
+		return Exchange{}, invalid(fmt.Errorf("exchanged_on %q (want YYYY-MM-DD)", in.ExchangedOn))
+	}
+
+	pr, err := s.findRate(ctx, p, from, to)
+	if err != nil {
+		return Exchange{}, err
+	}
+
+	converted, err := amount.Convert(pr.Rate, to)
+	if err != nil {
+		return Exchange{}, invalid(err)
+	}
+	if !converted.IsPositive() {
+		return Exchange{}, invalid(fmt.Errorf("%s %s converts to %s %s", amount, from, converted, to))
+	}
+
+	now := s.now().UTC()
+	inc := income.Income{
+		ID:          s.newID(),
+		Period:      p,
+		Amount:      converted,
+		Kind:        income.KindExchange,
+		Description: fmt.Sprintf("Exchange %s %s at %s", amount, from, pr.Rate),
+		ReceivedOn:  exchangedOn,
+		CreatedAt:   now,
+	}
+	ex := Exchange{
+		ID:          s.newID(),
+		Period:      p,
+		From:        amount,
+		To:          converted,
+		Rate:        pr.Rate,
+		Description: description,
+		ExchangedOn: exchangedOn,
+		IncomeID:    inc.ID,
+		CreatedAt:   now,
+	}
+
+	// TODO: with a database, save both in a single transaction so a failure
+	// can't leave an exchange without its income (or the other way around).
+	if err := s.exchanges.Save(ctx, ex); err != nil {
+		return Exchange{}, fmt.Errorf("save exchange: %w", err)
+	}
+	if err := s.incomes.Save(ctx, inc); err != nil {
+		return Exchange{}, fmt.Errorf("save exchange income: %w", err)
+	}
+	return ex, nil
+}
+
+func (s *Service) findRate(ctx context.Context, p period.Period, from, to money.Currency) (PeriodRate, error) {
+	r, err := s.rates.FindRate(ctx, p, from, to)
+	if errors.Is(err, ErrRateNotFound) {
+		return PeriodRate{}, fmt.Errorf("%w: no %s→%s rate set for period %s", ErrRateNotFound, from, to, p)
+	}
+	if err != nil {
+		return PeriodRate{}, fmt.Errorf("find rate: %w", err)
+	}
+	return r, nil
+}
+
+// parsePair validates the period and two different supported currencies.
+func parsePair(in PairInput) (period.Period, money.Currency, money.Currency, error) {
+	p, err := period.Parse(in.Period)
+	if err != nil {
+		return period.Period{}, "", "", invalid(err)
+	}
+	from, err := money.ParseCurrency(in.From)
+	if err != nil {
+		return period.Period{}, "", "", invalid(err)
+	}
+	to, err := money.ParseCurrency(in.To)
+	if err != nil {
+		return period.Period{}, "", "", invalid(err)
+	}
+	if from == to {
+		return period.Period{}, "", "", invalid(fmt.Errorf("source and target currency are both %s", from))
+	}
+	return p, from, to, nil
+}
+
+// invalid marks err as a validation error while keeping the original error in the chain.
+func invalid(err error) error {
+	return fmt.Errorf("%w: %w", ErrInvalidInput, err)
+}

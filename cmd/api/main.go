@@ -9,6 +9,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/memory"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 )
 
@@ -19,12 +20,18 @@ func main() {
 	// Wiring: adapters are created here and injected into the core.
 	incomeRepo := memory.NewIncomeRepository()
 	incomeService := income.NewService(incomeRepo)
+	// Exchanges write their converted amount into the same income repository.
+	exchangeService := exchange.NewService(memory.NewRateRepository(), memory.NewExchangeRepository(), incomeRepo)
 
 	addr := ":" + getenv("PORT", "8080")
 
 	srv := &http.Server{
-		Addr:              addr,
-		Handler:           httpapi.NewRouter(incomeService),
+		Addr: addr,
+		Handler: httpapi.NewRouter(httpapi.Services{
+			Incomes:   incomeService,
+			Rates:     exchangeService,
+			Exchanges: exchangeService,
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

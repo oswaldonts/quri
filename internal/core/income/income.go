@@ -20,12 +20,18 @@ type Kind string
 const (
 	KindSalary Kind = "salary"
 	KindExtra  Kind = "extra"
+	// KindExchange is money obtained by converting another currency.
+	// It is created by the exchange service, never registered by hand.
+	KindExchange Kind = "exchange"
 )
 
+// parseKind accepts only the kinds a user may register directly.
 func parseKind(s string) (Kind, error) {
 	switch k := Kind(s); k {
 	case KindSalary, KindExtra:
 		return k, nil
+	case KindExchange:
+		return "", fmt.Errorf("kind %q is created automatically when registering an exchange", s)
 	default:
 		return "", fmt.Errorf("kind %q (want %q or %q)", s, KindSalary, KindExtra)
 	}

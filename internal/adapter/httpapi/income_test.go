@@ -21,9 +21,9 @@ const validBody = `{
 	"received_on": "2026-07-31"
 }`
 
-// newTestRouter wires the real service with the in-memory repository.
-func newTestRouter() http.Handler {
-	return NewRouter(income.NewService(memory.NewIncomeRepository()))
+// newIncomeTestRouter wires the real service with the in-memory repository.
+func newIncomeTestRouter() http.Handler {
+	return NewRouter(Services{Incomes: income.NewService(memory.NewIncomeRepository())})
 }
 
 func post(h http.Handler, path, body string) *httptest.ResponseRecorder {
@@ -35,7 +35,7 @@ func post(h http.Handler, path, body string) *httptest.ResponseRecorder {
 }
 
 func TestRegisterIncome(t *testing.T) {
-	rec := post(newTestRouter(), "/periods/2026-07/incomes", validBody)
+	rec := post(newIncomeTestRouter(), "/periods/2026-07/incomes", validBody)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusCreated, rec.Body)
@@ -79,7 +79,7 @@ func TestRegisterIncomeBadRequest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := post(newTestRouter(), tt.path, tt.body)
+			rec := post(newIncomeTestRouter(), tt.path, tt.body)
 
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusBadRequest, rec.Body)
@@ -100,7 +100,7 @@ func (failingRegistrar) Register(context.Context, income.RegisterInput) (income.
 }
 
 func TestRegisterIncomeInternalError(t *testing.T) {
-	rec := post(NewRouter(failingRegistrar{}), "/periods/2026-07/incomes", validBody)
+	rec := post(NewRouter(Services{Incomes: failingRegistrar{}}), "/periods/2026-07/incomes", validBody)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
