@@ -43,6 +43,11 @@ type Income struct {
 	CreatedAt   string
 }
 
+type PeriodCategory struct {
+	Period     string
+	CategoryID string
+}
+
 type Rate struct {
 	Period       string
 	FromCurrency string

@@ -3,9 +3,11 @@ package sqlite
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
 
 func TestCategorySeed(t *testing.T) {
@@ -89,5 +91,51 @@ func TestCategoryArchiveKeepsTimestamp(t *testing.T) {
 	_ = repo.Update(ctx, other)
 	if got := archivedAt(); got != first {
 		t.Errorf("archived_at changed from %s to %s", first, got)
+	}
+}
+
+func TestPeriodCategories(t *testing.T) {
+	ctx := context.Background()
+	repo := NewCategoryRepository(openTestDB(t))
+	aug, _ := period.Parse("2026-08")
+	oct, _ := period.Parse("2026-10")
+
+	if _, ok, err := repo.LatestConfiguredBefore(ctx, oct); ok || err != nil {
+		t.Fatalf("empty table: ok = %v, err = %v; want false, nil", ok, err)
+	}
+
+	if err := repo.ReplacePeriod(ctx, aug, []string{"market", "exchange"}); err != nil {
+		t.Fatalf("ReplacePeriod: %v", err)
+	}
+	if err := repo.ReplacePeriod(ctx, aug, []string{"travel", "market", "exchange"}); err != nil {
+		t.Fatalf("second ReplacePeriod: %v", err)
+	}
+	got, err := repo.ListByPeriod(ctx, aug)
+	if err != nil {
+		t.Fatalf("ListByPeriod: %v", err)
+	}
+	var ids []string
+	for _, c := range got {
+		ids = append(ids, c.ID)
+	}
+	// Replaced (not appended) and ordered by group: needs, lifestyle, system.
+	if want := []string{"market", "travel", "exchange"}; !slices.Equal(ids, want) {
+		t.Errorf("ListByPeriod = %v, want %v", ids, want)
+	}
+
+	prev, ok, err := repo.LatestConfiguredBefore(ctx, oct)
+	if err != nil || !ok || prev != aug {
+		t.Errorf("LatestConfiguredBefore(2026-10) = %s, %v, %v; want 2026-08", prev, ok, err)
+	}
+	if _, ok, _ := repo.LatestConfiguredBefore(ctx, aug); ok {
+		t.Error("a period is not configured before itself")
+	}
+
+	// An unknown category violates the foreign key and nothing is changed.
+	if err := repo.ReplacePeriod(ctx, aug, []string{"market", "nope"}); err == nil {
+		t.Fatal("unknown category must fail")
+	}
+	if after, _ := repo.ListByPeriod(ctx, aug); len(after) != 3 {
+		t.Errorf("after failed replace: %d categories, want the previous 3", len(after))
 	}
 }

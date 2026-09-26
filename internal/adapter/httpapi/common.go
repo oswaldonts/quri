@@ -40,7 +40,8 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		return huma.Error404NotFound(err.Error())
 	case errors.Is(err, exchange.ErrRateNotFound),
 		errors.Is(err, category.ErrNameTaken),
-		errors.Is(err, category.ErrSystemCategory):
+		errors.Is(err, category.ErrSystemCategory),
+		errors.Is(err, category.ErrArchived):
 		// The request is valid but conflicts with the current state.
 		return huma.Error409Conflict(err.Error())
 	default:

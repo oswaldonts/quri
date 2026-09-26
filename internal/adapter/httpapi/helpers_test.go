@@ -24,9 +24,10 @@ func newTestRouter(t *testing.T) http.Handler {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
+	categoryRepo := sqlite.NewCategoryRepository(db)
 	exchangeSvc := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db))
 	return NewRouter(Services{
-		Categories: category.NewService(sqlite.NewCategoryRepository(db)),
+		Categories: category.NewService(categoryRepo, categoryRepo),
 		Incomes:    income.NewService(sqlite.NewIncomeRepository(db)),
 		Rates:      exchangeSvc,
 		Exchanges:  exchangeSvc,

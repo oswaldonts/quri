@@ -78,3 +78,77 @@ func TestCategoryErrors(t *testing.T) {
 		})
 	}
 }
+
+func periodCategories(t *testing.T, h http.Handler, method, path string) PeriodCategories {
+	t.Helper()
+	rec := send(h, method, path, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s %s: status = %d (body: %s)", method, path, rec.Code, rec.Body)
+	}
+	var pc PeriodCategories
+	decode(t, rec, &pc)
+	return pc
+}
+
+func hasCategory(pc PeriodCategories, id string) bool {
+	for _, c := range pc.Categories {
+		if c.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func TestPeriodCategoriesFlow(t *testing.T) {
+	h := newTestRouter(t)
+
+	aug := periodCategories(t, h, http.MethodGet, "/periods/2026-08/categories")
+	if aug.Source != "catalog" || len(aug.Categories) != 18 {
+		t.Fatalf("august before any change = %s with %d categories, want catalog with 18", aug.Source, len(aug.Categories))
+	}
+
+	aug = periodCategories(t, h, http.MethodDelete, "/periods/2026-08/categories/travel")
+	if aug.Source != "own" || len(aug.Categories) != 17 || hasCategory(aug, "travel") {
+		t.Errorf("august after removing travel = %s with %d categories", aug.Source, len(aug.Categories))
+	}
+
+	sep := periodCategories(t, h, http.MethodGet, "/periods/2026-09/categories")
+	if sep.Source != "inherited" || sep.InheritedFrom != "2026-08" || hasCategory(sep, "travel") {
+		t.Errorf("september = %s from %q, want inherited from 2026-08 without travel", sep.Source, sep.InheritedFrom)
+	}
+
+	jul := periodCategories(t, h, http.MethodGet, "/periods/2026-07/categories")
+	if jul.Source != "catalog" || !hasCategory(jul, "travel") {
+		t.Errorf("july = %s, earlier periods must not be affected", jul.Source)
+	}
+
+	sep = periodCategories(t, h, http.MethodPut, "/periods/2026-09/categories/travel")
+	if sep.Source != "own" || !hasCategory(sep, "travel") {
+		t.Errorf("september after adding travel = %s", sep.Source)
+	}
+	if aug = periodCategories(t, h, http.MethodGet, "/periods/2026-08/categories"); hasCategory(aug, "travel") {
+		t.Error("adding travel to september must not change august")
+	}
+}
+
+func TestPeriodCategoryErrors(t *testing.T) {
+	h := newTestRouter(t)
+	send(h, http.MethodPatch, "/categories/other", `{"archived": true}`)
+
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+	}{
+		{"remove system category", http.MethodDelete, "/periods/2026-08/categories/exchange", http.StatusConflict},
+		{"add archived category", http.MethodPut, "/periods/2026-08/categories/other", http.StatusConflict},
+		{"unknown category", http.MethodPut, "/periods/2026-08/categories/nope", http.StatusNotFound},
+		{"bad period", http.MethodGet, "/periods/2026-8/categories", http.StatusUnprocessableEntity},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertProblem(t, send(h, tt.method, tt.path, ""), tt.wantStatus)
+		})
+	}
+}

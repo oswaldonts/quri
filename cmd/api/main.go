@@ -40,7 +40,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	defer db.Close()
 
 	// Wiring: adapters are created here and injected into the core.
-	categoryService := category.NewService(sqlite.NewCategoryRepository(db))
+	categoryRepo := sqlite.NewCategoryRepository(db)
+	categoryService := category.NewService(categoryRepo, categoryRepo)
 	incomeService := income.NewService(sqlite.NewIncomeRepository(db))
 	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db))
 

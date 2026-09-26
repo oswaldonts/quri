@@ -12,20 +12,25 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite/sqlitedb"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
 
-// Compile-time check that CategoryRepository implements the core port.
-var _ category.Repository = (*CategoryRepository)(nil)
+// Compile-time checks that CategoryRepository implements the core ports.
+var (
+	_ category.Repository       = (*CategoryRepository)(nil)
+	_ category.PeriodRepository = (*CategoryRepository)(nil)
+)
 
-// CategoryRepository stores the category catalog in SQLite.
+// CategoryRepository stores the category catalog and the categories of each period in SQLite.
 type CategoryRepository struct {
+	db  *sql.DB
 	q   *sqlitedb.Queries
 	now func() time.Time // timestamp recorded when a category gets archived
 }
 
 // NewCategoryRepository returns a repository backed by db.
 func NewCategoryRepository(db *sql.DB) *CategoryRepository {
-	return &CategoryRepository{q: sqlitedb.New(db), now: time.Now}
+	return &CategoryRepository{db: db, q: sqlitedb.New(db), now: time.Now}
 }
 
 // Create inserts the category; a duplicated name returns category.ErrNameTaken.
@@ -93,6 +98,59 @@ func (r *CategoryRepository) Update(ctx context.Context, c category.Category) er
 		return fmt.Errorf("%w: %q", category.ErrNotFound, c.ID)
 	}
 	return nil
+}
+
+// ListByPeriod returns the categories configured for the period, ordered by group and name.
+func (r *CategoryRepository) ListByPeriod(ctx context.Context, p period.Period) ([]category.Category, error) {
+	rows, err := r.q.ListPeriodCategories(ctx, p.String())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]category.Category, 0, len(rows))
+	for _, row := range rows {
+		c, err := toCategory(row.Category)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// LatestConfiguredBefore returns the most recent period before p with its own categories.
+func (r *CategoryRepository) LatestConfiguredBefore(ctx context.Context, p period.Period) (period.Period, bool, error) {
+	s, err := r.q.LatestConfiguredPeriodBefore(ctx, p.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return period.Period{}, false, nil
+	}
+	if err != nil {
+		return period.Period{}, false, err
+	}
+	prev, err := period.Parse(s)
+	if err != nil {
+		return period.Period{}, false, fmt.Errorf("period_categories row: %w", err)
+	}
+	return prev, true, nil
+}
+
+// ReplacePeriod sets the categories of the period to exactly ids in one transaction.
+func (r *CategoryRepository) ReplacePeriod(ctx context.Context, p period.Period, ids []string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := r.q.WithTx(tx)
+	if err := q.DeletePeriodCategories(ctx, p.String()); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := q.InsertPeriodCategory(ctx, sqlitedb.InsertPeriodCategoryParams{Period: p.String(), CategoryID: id}); err != nil {
+			return fmt.Errorf("insert %q: %w", id, err)
+		}
+	}
+	return tx.Commit()
 }
 
 func toCategory(row sqlitedb.Category) (category.Category, error) {

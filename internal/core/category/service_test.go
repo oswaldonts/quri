@@ -3,17 +3,23 @@ package category
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
 
-// fakeRepo is an in-test catalog enforcing the same rules as the real one.
-type fakeRepo struct{ byID map[string]Category }
+// fakeRepo is an in-test catalog and period store enforcing the same rules as the real one.
+type fakeRepo struct {
+	byID    map[string]Category
+	periods map[period.Period][]string
+}
 
 func newFakeRepo(cs ...Category) *fakeRepo {
-	r := &fakeRepo{byID: map[string]Category{}}
+	r := &fakeRepo{byID: map[string]Category{}, periods: map[period.Period][]string{}}
 	for _, c := range cs {
 		r.byID[c.ID] = c
 	}
@@ -56,6 +62,31 @@ func (r *fakeRepo) List(_ context.Context, includeArchived bool) ([]Category, er
 	return out, nil
 }
 
+func (r *fakeRepo) ListByPeriod(_ context.Context, p period.Period) ([]Category, error) {
+	var out []Category
+	for _, id := range r.periods[p] {
+		out = append(out, r.byID[id])
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func (r *fakeRepo) LatestConfiguredBefore(_ context.Context, p period.Period) (period.Period, bool, error) {
+	var latest period.Period
+	found := false
+	for q := range r.periods {
+		if q.String() < p.String() && (!found || q.String() > latest.String()) {
+			latest, found = q, true
+		}
+	}
+	return latest, found, nil
+}
+
+func (r *fakeRepo) ReplacePeriod(_ context.Context, p period.Period, ids []string) error {
+	r.periods[p] = slices.Clone(ids)
+	return nil
+}
+
 func (r *fakeRepo) Update(_ context.Context, c Category) error {
 	if _, ok := r.byID[c.ID]; !ok {
 		return ErrNotFound
@@ -72,8 +103,8 @@ var (
 	exchange = Category{ID: "exchange", Name: "Cambio", Group: GroupSystem}
 )
 
-func newTestService(repo Repository) *Service {
-	s := NewService(repo)
+func newTestService(repo *fakeRepo) *Service {
+	s := NewService(repo, repo)
 	s.now = func() time.Time { return time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC) }
 	s.newID = func() string { return "new-id" }
 	return s

@@ -19,16 +19,17 @@ type Repository interface {
 	Update(ctx context.Context, c Category) error
 }
 
-// Service holds the catalog use cases.
+// Service holds the catalog and period category use cases.
 type Service struct {
-	repo  Repository
-	now   func() time.Time
-	newID func() string
+	repo    Repository
+	periods PeriodRepository
+	now     func() time.Time
+	newID   func() string
 }
 
-// NewService returns a Service backed by repo.
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo, now: time.Now, newID: rand.Text}
+// NewService returns a Service backed by the catalog and period repositories.
+func NewService(repo Repository, periods PeriodRepository) *Service {
+	return &Service{repo: repo, periods: periods, now: time.Now, newID: rand.Text}
 }
 
 // CreateInput carries a new category.

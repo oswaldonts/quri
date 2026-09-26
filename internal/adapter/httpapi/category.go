@@ -15,6 +15,9 @@ type CategoryCatalog interface {
 	Create(ctx context.Context, in category.CreateInput) (category.Category, error)
 	List(ctx context.Context, includeArchived bool) ([]category.Category, error)
 	Update(ctx context.Context, id string, in category.UpdateInput) (category.Category, error)
+	ForPeriod(ctx context.Context, period string) (category.PeriodCategories, error)
+	Activate(ctx context.Context, period, id string) (category.PeriodCategories, error)
+	Deactivate(ctx context.Context, period, id string) (category.PeriodCategories, error)
 }
 
 // Category is a catalog entry as returned by the API.
@@ -73,6 +76,40 @@ type UpdateCategoryInput struct {
 // CategoryOutput wraps a Category as the response body.
 type CategoryOutput struct {
 	Body Category
+}
+
+// PeriodCategoryInput identifies a category within a period.
+type PeriodCategoryInput struct {
+	PeriodParam
+	ID string `path:"id" example:"travel"`
+}
+
+// PeriodCategories are the categories a period uses.
+type PeriodCategories struct {
+	Period        string     `json:"period" example:"2026-08"`
+	Source        string     `json:"source" enum:"own,inherited,catalog" doc:"own: the period has its own list. inherited: copied from inherited_from. catalog: no earlier period is configured, so every active category applies."`
+	InheritedFrom string     `json:"inherited_from,omitempty" example:"2026-07" doc:"Set only when source is inherited."`
+	Categories    []Category `json:"categories"`
+}
+
+// PeriodCategoriesOutput wraps PeriodCategories as the response body.
+type PeriodCategoriesOutput struct {
+	Body PeriodCategories
+}
+
+func toPeriodCategories(pc category.PeriodCategories) *PeriodCategoriesOutput {
+	out := PeriodCategories{
+		Period:     pc.Period.String(),
+		Source:     string(pc.Source),
+		Categories: make([]Category, 0, len(pc.Categories)),
+	}
+	if pc.Source == category.SourceInherited {
+		out.InheritedFrom = pc.InheritedFrom.String()
+	}
+	for _, c := range pc.Categories {
+		out.Categories = append(out.Categories, toCategory(c))
+	}
+	return &PeriodCategoriesOutput{Body: out}
 }
 
 func registerCategories(api huma.API, categories CategoryCatalog) {
@@ -135,5 +172,55 @@ func registerCategories(api huma.API, categories CategoryCatalog) {
 			return nil, toHTTPError(ctx, "update category", err)
 		}
 		return &CategoryOutput{Body: toCategory(c)}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "list-period-categories",
+		Method:      http.MethodGet,
+		Path:        "/periods/{period}/categories",
+		Summary:     "List the categories of a period",
+		Description: "A period without its own list inherits the one of the latest earlier configured period " +
+			"(without categories archived since then); if there is none, every active catalog category applies.",
+		Tags:   []string{tagCategories},
+		Errors: []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *PeriodParam) (*PeriodCategoriesOutput, error) {
+		pc, err := categories.ForPeriod(ctx, in.Period)
+		if err != nil {
+			return nil, toHTTPError(ctx, "list period categories", err)
+		}
+		return toPeriodCategories(pc), nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "activate-period-category",
+		Method:      http.MethodPut,
+		Path:        "/periods/{period}/categories/{id}",
+		Summary:     "Use a category in a period",
+		Description: "Adds the category to the period, which keeps its own list from then on. Idempotent.",
+		Tags:        []string{tagCategories},
+		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *PeriodCategoryInput) (*PeriodCategoriesOutput, error) {
+		pc, err := categories.Activate(ctx, in.Period, in.ID)
+		if err != nil {
+			return nil, toHTTPError(ctx, "activate period category", err)
+		}
+		return toPeriodCategories(pc), nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "deactivate-period-category",
+		Method:      http.MethodDelete,
+		Path:        "/periods/{period}/categories/{id}",
+		Summary:     "Stop using a category in a period",
+		Description: "Removes the category from the period only; the category stays in the catalog and in other periods. " +
+			"The period keeps its own list from then on. System categories can't be removed.",
+		Tags:   []string{tagCategories},
+		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *PeriodCategoryInput) (*PeriodCategoriesOutput, error) {
+		pc, err := categories.Deactivate(ctx, in.Period, in.ID)
+		if err != nil {
+			return nil, toHTTPError(ctx, "deactivate period category", err)
+		}
+		return toPeriodCategories(pc), nil
 	})
 }
