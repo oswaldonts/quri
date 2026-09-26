@@ -9,7 +9,7 @@ import (
 )
 
 // NewRouter builds the HTTP handler with all routes and middlewares.
-func NewRouter() http.Handler {
+func NewRouter(incomes IncomeRegistrar) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -18,6 +18,10 @@ func NewRouter() http.Handler {
 	r.Use(middleware.Recoverer)
 
 	r.Get("/health", health)
+
+	r.Route("/periods/{period}", func(r chi.Router) {
+		r.Post("/incomes", registerIncome(incomes))
+	})
 
 	return r
 }
