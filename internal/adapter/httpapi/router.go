@@ -25,6 +25,8 @@ func NewRouter(s Services) http.Handler {
 	r.Use(middleware.Recoverer)
 
 	r.Get("/health", health)
+	r.Get("/openapi.yaml", openAPISpec)
+	r.Get("/docs", docs)
 
 	r.Route("/periods/{period}", func(r chi.Router) {
 		r.Post("/incomes", registerIncome(s.Incomes))

@@ -1,0 +1,377 @@
+openapi: 3.1.0
+
+info:
+  title: go-income-mgr API
+  version: 0.3.0
+  summary: Personal income and expense manager.
+  description: |
+    Budgets are organized by **period**: the month the money was earned (`YYYY-MM`).
+    That money is spent during the following month (`spend_month`), e.g. money
+    earned in 2026-07 is spent in 2026-08.
+
+    **Amounts** are always decimal strings (`"1330.00"`), never JSON numbers, to avoid
+    floating point rounding. Currencies are ISO 4217 codes; supported: `USD`, `PEN`.
+
+    **Exchanges** convert money between currencies with the rate set for the period:
+    `target = source × rate`, truncated to the target currency's minor unit. The
+    converted amount is registered automatically as an income of kind `exchange`.
+
+servers:
+  - url: /
+    description: Current server
+
+# No authentication yet: every operation is public (the server only listens on loopback).
+security: []
+
+tags:
+  - name: System
+    description: Service status and documentation.
+  - name: Incomes
+    description: Money received in a period.
+  - name: Rates
+    description: Exchange rate chosen for each period and currency pair.
+  - name: Exchanges
+    description: Currency conversions made with the period rate.
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: The service is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+
+  /periods/{period}/incomes:
+    parameters:
+      - $ref: "#/components/parameters/Period"
+    post:
+      tags: [Incomes]
+      summary: Register an income
+      description: |
+        Registers money received for the period. Kinds `salary` and `extra` are accepted;
+        `exchange` incomes are created only by `POST /periods/{period}/exchanges`.
+      operationId: registerIncome
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterIncomeRequest"
+            examples:
+              salary:
+                summary: Monthly salary in USD
+                value:
+                  currency: USD
+                  amount: "1330.00"
+                  kind: salary
+                  description: Sueldo julio
+                  received_on: "2026-07-31"
+              extra:
+                summary: Extra income in PEN
+                value:
+                  currency: PEN
+                  amount: "108.00"
+                  kind: extra
+                  received_on: "2026-07-15"
+      responses:
+        "201":
+          description: Income registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Income"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /periods/{period}/rates/{pair}:
+    parameters:
+      - $ref: "#/components/parameters/Period"
+      - $ref: "#/components/parameters/Pair"
+    put:
+      tags: [Rates]
+      summary: Set the rate of a period
+      description: |
+        Creates or replaces the rate for the period and pair. Exchanges already
+        registered keep the rate they were made with.
+      operationId: setRate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetRateRequest"
+            example:
+              rate: "3.25"
+      responses:
+        "200":
+          description: Rate saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rate"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      tags: [Rates]
+      summary: Get the rate of a period
+      operationId: getRate
+      responses:
+        "200":
+          description: The rate of the period and pair.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rate"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: No rate set for the period and pair.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "rate not found: no USD→PEN rate set for period 2026-07"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /periods/{period}/exchanges:
+    parameters:
+      - $ref: "#/components/parameters/Period"
+    post:
+      tags: [Exchanges]
+      summary: Register an exchange
+      description: |
+        Converts `amount` from `from` to `to` using the period rate (truncating),
+        stores the exchange and registers the converted amount as an income of kind
+        `exchange` in the target currency (`income_id` in the response).
+      operationId: registerExchange
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterExchangeRequest"
+            example:
+              from: USD
+              to: PEN
+              amount: "1096.00"
+              description: Casa de cambio
+              exchanged_on: "2026-08-01"
+      responses:
+        "201":
+          description: Exchange registered and converted amount added as income.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Exchange"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: No rate set for the period and pair; set it with `PUT /periods/{period}/rates/{pair}` first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "rate not found: no USD→PEN rate set for period 2026-07"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  parameters:
+    Period:
+      name: period
+      in: path
+      required: true
+      description: Month the money was earned.
+      schema:
+        $ref: "#/components/schemas/Period"
+    Pair:
+      name: pair
+      in: path
+      required: true
+      description: Source and target currency separated by a dash (1 source = rate × target).
+      schema:
+        type: string
+        pattern: "^[A-Za-z]{3}-[A-Za-z]{3}$"
+        examples: [USD-PEN]
+
+  schemas:
+    Period:
+      type: string
+      pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"
+      examples: ["2026-07"]
+    Currency:
+      type: string
+      description: ISO 4217 code (case-insensitive on input).
+      enum: [USD, PEN]
+    Amount:
+      type: string
+      description: Decimal string with at most 2 decimal places.
+      pattern: "^-?[0-9]{1,13}(\\.[0-9]{1,2})?$"
+      examples: ["1330.00"]
+    Date:
+      type: string
+      format: date
+      examples: ["2026-07-31"]
+    Money:
+      type: object
+      required: [currency, amount]
+      properties:
+        currency:
+          $ref: "#/components/schemas/Currency"
+        amount:
+          $ref: "#/components/schemas/Amount"
+
+    RegisterIncomeRequest:
+      type: object
+      required: [currency, amount, kind, received_on]
+      additionalProperties: false
+      properties:
+        currency:
+          $ref: "#/components/schemas/Currency"
+        amount:
+          $ref: "#/components/schemas/Amount"
+        kind:
+          type: string
+          enum: [salary, extra]
+        description:
+          type: string
+          maxLength: 200
+        received_on:
+          $ref: "#/components/schemas/Date"
+    Income:
+      type: object
+      required: [id, period, spend_month, currency, amount, kind, description, received_on, created_at]
+      properties:
+        id:
+          type: string
+        period:
+          $ref: "#/components/schemas/Period"
+        spend_month:
+          $ref: "#/components/schemas/Period"
+        currency:
+          $ref: "#/components/schemas/Currency"
+        amount:
+          $ref: "#/components/schemas/Amount"
+        kind:
+          type: string
+          enum: [salary, extra, exchange]
+        description:
+          type: string
+        received_on:
+          $ref: "#/components/schemas/Date"
+        created_at:
+          type: string
+          format: date-time
+
+    SetRateRequest:
+      type: object
+      required: [rate]
+      additionalProperties: false
+      properties:
+        rate:
+          type: string
+          description: Positive decimal with at most 4 decimal places.
+          pattern: "^[0-9]{1,13}(\\.[0-9]{1,4})?$"
+          examples: ["3.25"]
+    Rate:
+      type: object
+      required: [period, from, to, rate, updated_at]
+      properties:
+        period:
+          $ref: "#/components/schemas/Period"
+        from:
+          $ref: "#/components/schemas/Currency"
+        to:
+          $ref: "#/components/schemas/Currency"
+        rate:
+          type: string
+          description: Always formatted with 4 decimal places.
+          examples: ["3.2500"]
+        updated_at:
+          type: string
+          format: date-time
+
+    RegisterExchangeRequest:
+      type: object
+      required: [from, to, amount, exchanged_on]
+      additionalProperties: false
+      properties:
+        from:
+          $ref: "#/components/schemas/Currency"
+        to:
+          $ref: "#/components/schemas/Currency"
+        amount:
+          $ref: "#/components/schemas/Amount"
+        description:
+          type: string
+          maxLength: 200
+        exchanged_on:
+          $ref: "#/components/schemas/Date"
+    Exchange:
+      type: object
+      required: [id, period, from, to, rate, description, exchanged_on, income_id, created_at]
+      properties:
+        id:
+          type: string
+        period:
+          $ref: "#/components/schemas/Period"
+        from:
+          $ref: "#/components/schemas/Money"
+        to:
+          $ref: "#/components/schemas/Money"
+        rate:
+          type: string
+          examples: ["3.2500"]
+        description:
+          type: string
+        exchanged_on:
+          $ref: "#/components/schemas/Date"
+        income_id:
+          type: string
+          description: ID of the `exchange` income created in the target currency.
+        created_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid JSON body or invalid input.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: 'invalid input: unsupported currency: "$"'
+    InternalError:
+      description: Unexpected failure; details are only logged on the server.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: internal error
