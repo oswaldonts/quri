@@ -88,8 +88,8 @@ func TestSetRateAndGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Rate: %v", err)
 	}
-	if got.Rate.String() != "3.3000" {
-		t.Errorf("rate = %s, want 3.3000", got.Rate)
+	if got.Rate.String() != "3.3" {
+		t.Errorf("rate = %s, want 3.3", got.Rate)
 	}
 }
 
@@ -108,7 +108,7 @@ func TestSetRateValidation(t *testing.T) {
 		{"bad period", SetRateInput{PairInput{"2026-7", "USD", "PEN"}, "3.25"}},
 		{"unsupported currency", SetRateInput{PairInput{"2026-07", "USD", "EUR"}, "3.25"}},
 		{"same currency", SetRateInput{PairInput{"2026-07", "USD", "usd"}, "3.25"}},
-		{"bad rate", SetRateInput{PairInput{"2026-07", "USD", "PEN"}, "3.25671"}},
+		{"bad rate", SetRateInput{PairInput{"2026-07", "USD", "PEN"}, "0.123456789"}},
 		{"zero rate", SetRateInput{PairInput{"2026-07", "USD", "PEN"}, "0"}},
 	}
 	for _, tt := range tests {
@@ -141,8 +141,8 @@ func TestRegister(t *testing.T) {
 	if ex.To.String() != "3562.00" || ex.To.Currency() != money.PEN {
 		t.Errorf("To = %s %s, want 3562.00 PEN", ex.To, ex.To.Currency())
 	}
-	if ex.Rate.String() != "3.2500" {
-		t.Errorf("Rate = %s, want 3.2500", ex.Rate)
+	if ex.Rate.String() != "3.25" {
+		t.Errorf("Rate = %s, want 3.25", ex.Rate)
 	}
 	if len(f.exchanges.saved) != 1 {
 		t.Fatalf("saved %d exchanges, want 1", len(f.exchanges.saved))
@@ -204,7 +204,7 @@ func TestRegisterKeepsRateAfterUpdate(t *testing.T) {
 
 	f.setRate(t, "3.40")
 
-	if ex.Rate.String() != "3.2500" || f.exchanges.saved[0].Rate.String() != "3.2500" {
+	if ex.Rate.String() != "3.25" || f.exchanges.saved[0].Rate.String() != "3.25" {
 		t.Errorf("exchange rate changed after updating the period rate")
 	}
 }

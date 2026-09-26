@@ -5,7 +5,9 @@ package money
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -21,18 +23,30 @@ var (
 type Currency string
 
 const (
-	USD Currency = "USD"
-	PEN Currency = "PEN"
+	USD Currency = "USD" // US dollar
+	PEN Currency = "PEN" // Peruvian sol
+	ARS Currency = "ARS" // Argentine peso
+	COP Currency = "COP" // Colombian peso
+	VES Currency = "VES" // Venezuelan bolívar
 )
 
-// minorUnits maps each supported currency to its number of decimal places.
+// minorUnits maps each supported currency to its number of decimal places (ISO 4217).
+// Supporting a new currency only takes adding it here.
 var minorUnits = map[Currency]int{
 	USD: 2,
 	PEN: 2,
+	ARS: 2,
+	COP: 2,
+	VES: 2,
 }
 
-// maxIntegerDigits keeps parsed values far from the int64 limit.
-const maxIntegerDigits = 13
+// Currencies returns the supported currencies in alphabetical order.
+func Currencies() []Currency {
+	return slices.Sorted(maps.Keys(minorUnits))
+}
+
+// maxAmountDigits keeps parsed amounts far from the int64 limit.
+const maxAmountDigits = 13
 
 // ParseCurrency validates an ISO 4217 code (case-insensitive) against the supported currencies.
 func ParseCurrency(code string) (Currency, error) {
@@ -65,7 +79,7 @@ func Parse(s string, c Currency) (Money, error) {
 	if !ok {
 		return Money{}, fmt.Errorf("%w: %q", ErrUnsupportedCurrency, c)
 	}
-	minor, err := parseDecimal(s, decimals)
+	minor, err := parseDecimal(s, maxAmountDigits, decimals)
 	if err != nil {
 		return Money{}, fmt.Errorf("%w: %w", ErrInvalidAmount, err)
 	}
@@ -102,11 +116,11 @@ func (m Money) Convert(r Rate, to Currency) (Money, error) {
 	}
 	fromDecimals := minorUnits[m.currency]
 
-	// result = amount × rate × 10^toDecimals / 10^(rateDecimals + fromDecimals)
+	// result = amount × rate × 10^toDecimals / 10^(RateDecimals + fromDecimals)
 	// big.Int avoids int64 overflow in the intermediate product.
 	n := new(big.Int).Mul(big.NewInt(m.amount), big.NewInt(r.scaled))
 	n.Mul(n, big.NewInt(pow10(toDecimals)))
-	n.Quo(n, big.NewInt(pow10(rateDecimals+fromDecimals))) // Quo truncates toward zero
+	n.Quo(n, big.NewInt(pow10(RateDecimals+fromDecimals))) // Quo truncates toward zero
 
 	if !n.IsInt64() {
 		return Money{}, fmt.Errorf("%w: converted amount out of range", ErrInvalidAmount)
@@ -119,17 +133,21 @@ func (m Money) String() string {
 	return formatDecimal(m.amount, minorUnits[m.currency])
 }
 
-// rateDecimals is the precision of exchange rates, e.g. 3.2567.
-const rateDecimals = 4
+// RateDecimals is the precision of exchange rates. 8 places keep small rates exact
+// enough, e.g. 1 COP = 0.00025 USD.
+const RateDecimals = 8
 
-// Rate is an exchange rate stored as an integer scaled by 10^rateDecimals (3.25 → 32500).
+// maxRateDigits bounds the integer part so 10 + 8 digits fit in an int64.
+const maxRateDigits = 10
+
+// Rate is an exchange rate stored as an integer scaled by 10^8 (3.25 → 325000000).
 type Rate struct {
 	scaled int64
 }
 
-// ParseRate reads a positive decimal rate with up to 4 decimal places, e.g. "3.25".
+// ParseRate reads a positive decimal rate with up to 8 decimal places, e.g. "3.25" or "0.00025".
 func ParseRate(s string) (Rate, error) {
-	scaled, err := parseDecimal(s, rateDecimals)
+	scaled, err := parseDecimal(s, maxRateDigits, RateDecimals)
 	if err != nil {
 		return Rate{}, fmt.Errorf("%w: %w", ErrInvalidRate, err)
 	}
@@ -139,7 +157,7 @@ func ParseRate(s string) (Rate, error) {
 	return Rate{scaled: scaled}, nil
 }
 
-// NewRate builds a Rate from its scaled integer form (e.g. 32500 for 3.25), as stored in a database.
+// NewRate builds a Rate from its scaled integer form (e.g. 325000000 for 3.25), as stored in a database.
 func NewRate(scaled int64) (Rate, error) {
 	if scaled <= 0 {
 		return Rate{}, fmt.Errorf("%w: %d must be greater than zero", ErrInvalidRate, scaled)
@@ -147,17 +165,20 @@ func NewRate(scaled int64) (Rate, error) {
 	return Rate{scaled: scaled}, nil
 }
 
-// Scaled returns the rate multiplied by 10^4 (3.25 → 32500), for storage.
+// Scaled returns the rate multiplied by 10^8 (3.25 → 325000000), for storage.
 func (r Rate) Scaled() int64 { return r.scaled }
 
-// String formats the rate with 4 decimal places, e.g. "3.2500".
+// String formats the rate without trailing zeros, e.g. "3.25", "1150" or "0.00025".
 func (r Rate) String() string {
-	return formatDecimal(r.scaled, rateDecimals)
+	s := formatDecimal(r.scaled, RateDecimals)
+	s = strings.TrimRight(s, "0")
+	return strings.TrimSuffix(s, ".")
 }
 
 // parseDecimal converts a decimal string into an integer scaled by 10^decimals
 // ("142.5" with 2 decimals → 14250). It never rounds: extra decimal places are an error.
-func parseDecimal(s string, decimals int) (int64, error) {
+// maxIntegerDigits bounds the integer part so the result fits in an int64.
+func parseDecimal(s string, maxIntegerDigits, decimals int) (int64, error) {
 	digits := strings.TrimSpace(s)
 	negative := strings.HasPrefix(digits, "-")
 	digits = strings.TrimPrefix(digits, "-")

@@ -11,11 +11,15 @@ func TestParseRate(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{in: "3.25", want: "3.2500"},
+		{in: "3.25", want: "3.25"},
 		{in: "3.2567", want: "3.2567"},
-		{in: "4", want: "4.0000"},
+		{in: "0.00025", want: "0.00025"},
+		{in: "1150", want: "1150"},
+		{in: "0.12345678", want: "0.12345678"},
+		{in: "4.0", want: "4"},
 		{in: "0.2667", want: "0.2667"},
-		{in: "3.25671", wantErr: true},
+		{in: "0.123456789", wantErr: true},
+		{in: "12345678901", wantErr: true},
 		{in: "0", wantErr: true},
 		{in: "-3.25", wantErr: true},
 		{in: "abc", wantErr: true},
@@ -53,6 +57,8 @@ func TestConvert(t *testing.T) {
 		{"truncates, never rounds up", "1096.37", USD, "3.2567", PEN, "3570.54"}, // 3570.548179
 		{"sub-cent result truncates to zero", "0.01", USD, "0.5", PEN, "0.00"},
 		{"reverse direction", "100.00", PEN, "0.2667", USD, "26.67"},
+		{"small rate keeps precision", "1000000.00", COP, "0.00025", USD, "250.00"},
+		{"large rate", "200.00", USD, "1150", ARS, "230000.00"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,16 +94,16 @@ func TestConvertInvalid(t *testing.T) {
 	}
 
 	huge, _ := Parse("9999999999999.99", USD)
-	maxRate, _ := ParseRate("9999.9999")
+	maxRate, _ := ParseRate("9999999999.99999999")
 	if _, err := huge.Convert(maxRate, PEN); !errors.Is(err, ErrInvalidAmount) {
 		t.Errorf("out of range: err = %v, want %v", err, ErrInvalidAmount)
 	}
 }
 
 func TestNewRate(t *testing.T) {
-	r, err := NewRate(32500)
-	if err != nil || r.String() != "3.2500" || r.Scaled() != 32500 {
-		t.Errorf("NewRate(32500) = %s (scaled %d), %v; want 3.2500", r, r.Scaled(), err)
+	r, err := NewRate(325000000)
+	if err != nil || r.String() != "3.25" || r.Scaled() != 325000000 {
+		t.Errorf("NewRate(325000000) = %s (scaled %d), %v; want 3.25", r, r.Scaled(), err)
 	}
 	if _, err := NewRate(0); !errors.Is(err, ErrInvalidRate) {
 		t.Errorf("NewRate(0): err = %v, want %v", err, ErrInvalidRate)

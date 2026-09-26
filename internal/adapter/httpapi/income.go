@@ -20,11 +20,11 @@ type IncomeRegistrar interface {
 type RegisterIncomeInput struct {
 	PeriodParam
 	Body struct {
-		Currency    string `json:"currency" enum:"USD,PEN" doc:"ISO 4217 currency code."`
-		Amount      string `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"1330.00" doc:"Decimal string with up to 2 decimal places."`
-		Kind        string `json:"kind" enum:"salary,extra" doc:"Exchange incomes are created by POST /periods/{period}/exchanges."`
-		Description string `json:"description,omitempty" maxLength:"200" example:"Sueldo julio"`
-		ReceivedOn  string `json:"received_on" format:"date" example:"2026-07-31"`
+		Currency    CurrencyCode `json:"currency"`
+		Amount      string       `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"1330.00" doc:"Decimal string with up to 2 decimal places."`
+		Kind        string       `json:"kind" enum:"salary,extra" doc:"Exchange incomes are created by POST /periods/{period}/exchanges."`
+		Description string       `json:"description,omitempty" maxLength:"200" example:"Sueldo julio"`
+		ReceivedOn  string       `json:"received_on" format:"date" example:"2026-07-31"`
 	}
 }
 
@@ -73,7 +73,7 @@ func registerIncomes(api huma.API, incomes IncomeRegistrar) {
 	}, func(ctx context.Context, in *RegisterIncomeInput) (*IncomeOutput, error) {
 		inc, err := incomes.Register(ctx, income.RegisterInput{
 			Period:      in.Period,
-			Currency:    in.Body.Currency,
+			Currency:    string(in.Body.Currency),
 			Amount:      in.Body.Amount,
 			Kind:        in.Body.Kind,
 			Description: in.Body.Description,

@@ -38,7 +38,7 @@ func (p PairParams) toInput() exchange.PairInput {
 type SetRateInput struct {
 	PairParams
 	Body struct {
-		Rate string `json:"rate" pattern:"^[0-9]{1,13}(\\.[0-9]{1,4})?$" example:"3.25" doc:"Positive decimal with up to 4 decimal places."`
+		Rate string `json:"rate" pattern:"^[0-9]{1,10}(\\.[0-9]{1,8})?$" example:"3.25" doc:"Positive decimal with up to 8 decimal places, e.g. 3.25, 1150 or 0.00025."`
 	}
 }
 
@@ -52,7 +52,7 @@ type Rate struct {
 	Period    string    `json:"period" example:"2026-07"`
 	From      string    `json:"from" example:"USD"`
 	To        string    `json:"to" example:"PEN"`
-	Rate      string    `json:"rate" example:"3.2500" doc:"Always formatted with 4 decimal places."`
+	Rate      string    `json:"rate" example:"3.25" doc:"Without trailing zeros."`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
@@ -75,11 +75,11 @@ func toRate(r exchange.PeriodRate) Rate {
 type RegisterExchangeInput struct {
 	PeriodParam
 	Body struct {
-		From        string `json:"from" enum:"USD,PEN" doc:"Source currency (spent)."`
-		To          string `json:"to" enum:"USD,PEN" doc:"Target currency (received)."`
-		Amount      string `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"1096.00" doc:"Amount spent in the source currency."`
-		Description string `json:"description,omitempty" maxLength:"200" example:"Casa de cambio"`
-		ExchangedOn string `json:"exchanged_on" format:"date" example:"2026-08-01"`
+		From        CurrencyCode `json:"from" doc:"Source currency (spent)."`
+		To          CurrencyCode `json:"to" doc:"Target currency (received)."`
+		Amount      string       `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"1096.00" doc:"Amount spent in the source currency."`
+		Description string       `json:"description,omitempty" maxLength:"200" example:"Casa de cambio"`
+		ExchangedOn string       `json:"exchanged_on" format:"date" example:"2026-08-01"`
 	}
 }
 
@@ -89,7 +89,7 @@ type Exchange struct {
 	Period      string    `json:"period" example:"2026-07"`
 	From        Money     `json:"from"`
 	To          Money     `json:"to"`
-	Rate        string    `json:"rate" example:"3.2500"`
+	Rate        string    `json:"rate" example:"3.25"`
 	Description string    `json:"description"`
 	ExchangedOn string    `json:"exchanged_on" format:"date" example:"2026-08-01"`
 	IncomeID    string    `json:"income_id" doc:"ID of the exchange income created in the target currency."`
@@ -165,7 +165,7 @@ func registerExchanges(api huma.API, exchanges ExchangeRegistrar) {
 		Errors:        []int{http.StatusConflict, http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, in *RegisterExchangeInput) (*ExchangeOutput, error) {
 		ex, err := exchanges.Register(ctx, exchange.RegisterInput{
-			PairInput:   exchange.PairInput{Period: in.Period, From: in.Body.From, To: in.Body.To},
+			PairInput:   exchange.PairInput{Period: in.Period, From: string(in.Body.From), To: string(in.Body.To)},
 			Amount:      in.Body.Amount,
 			Description: in.Body.Description,
 			ExchangedOn: in.Body.ExchangedOn,

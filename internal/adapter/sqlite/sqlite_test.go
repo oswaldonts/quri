@@ -106,7 +106,7 @@ func TestRateRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindRate: %v", err)
 	}
-	if got.Rate.String() != "3.3000" || got.Period != july || got.From != money.USD || got.To != money.PEN || !got.UpdatedAt.Equal(now) {
+	if got.Rate.String() != "3.3" || got.Period != july || got.From != money.USD || got.To != money.PEN || !got.UpdatedAt.Equal(now) {
 		t.Errorf("FindRate = %+v", got)
 	}
 	if _, err := repo.FindRate(ctx, july, money.PEN, money.USD); !errors.Is(err, exchange.ErrRateNotFound) {

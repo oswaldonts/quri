@@ -54,3 +54,36 @@ func TestBackfillExchangeExpenses(t *testing.T) {
 		t.Errorf("backfilled expense = %s %s %d %s, want exchange USD 109600 ex-1", category, currency, amount, exchangeID)
 	}
 }
+
+// TestRatePrecisionMigration checks that 00005 rescales rates stored with 4 decimals.
+func TestRatePrecisionMigration(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "test.db")+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	fsys, _ := fs.Sub(migrations, "migrations")
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 4); err != nil {
+		t.Fatalf("migrate to 4: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO rates VALUES ('2026-07', 'USD', 'PEN', 32500, '2026-07-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("migrate to latest: %v", err)
+	}
+
+	rate, err := NewRateRepository(db).FindRate(ctx, july, "USD", "PEN")
+	if err != nil {
+		t.Fatalf("FindRate: %v", err)
+	}
+	if rate.Rate.String() != "3.25" {
+		t.Errorf("rate after migration = %s, want 3.25", rate.Rate)
+	}
+}

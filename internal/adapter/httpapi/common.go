@@ -19,6 +19,25 @@ type PeriodParam struct {
 	Period string `path:"period" pattern:"^[0-9]{4}-(0[1-9]|1[0-2])$" example:"2026-07" doc:"Month the money was earned (YYYY-MM)."`
 }
 
+// CurrencyCode is an ISO 4217 code in request bodies. Its schema enum is built from
+// money.Currencies(), so supporting a new currency never requires touching the API.
+type CurrencyCode string
+
+// Schema implements huma.SchemaProvider.
+func (CurrencyCode) Schema(huma.Registry) *huma.Schema {
+	codes := money.Currencies()
+	enum := make([]any, 0, len(codes))
+	for _, c := range codes {
+		enum = append(enum, string(c))
+	}
+	return &huma.Schema{
+		Type:        huma.TypeString,
+		Enum:        enum,
+		Description: "ISO 4217 currency code.",
+		Examples:    []any{string(money.USD)},
+	}
+}
+
 // Money is an amount in a currency.
 type Money struct {
 	Currency string `json:"currency" example:"USD" doc:"ISO 4217 currency code."`

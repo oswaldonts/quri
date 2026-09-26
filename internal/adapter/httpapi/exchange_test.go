@@ -24,7 +24,7 @@ func TestRateEndpoints(t *testing.T) {
 	}
 	var got Rate
 	decode(t, rec, &got)
-	if got.Period != "2026-07" || got.From != "USD" || got.To != "PEN" || got.Rate != "3.2500" {
+	if got.Period != "2026-07" || got.From != "USD" || got.To != "PEN" || got.Rate != "3.25" {
 		t.Errorf("response = %+v", got)
 	}
 }
@@ -40,7 +40,7 @@ func TestRateEndpointsErrors(t *testing.T) {
 		{"same currency", http.MethodPut, "/periods/2026-07/rates/USD-USD", `{"rate": "3.25"}`},
 		{"unsupported currency", http.MethodPut, "/periods/2026-07/rates/USD-EUR", `{"rate": "3.25"}`},
 		{"rate as number", http.MethodPut, ratePath, `{"rate": 3.25}`},
-		{"too many decimals", http.MethodPut, ratePath, `{"rate": "3.25671"}`},
+		{"too many decimals", http.MethodPut, ratePath, `{"rate": "0.123456789"}`},
 		{"zero rate", http.MethodPut, ratePath, `{"rate": "0"}`},
 		{"GET bad pair", http.MethodGet, "/periods/2026-07/rates/USDPEN", ""},
 		{"GET bad period", http.MethodGet, "/periods/julio/rates/USD-PEN", ""},
@@ -76,8 +76,8 @@ func TestRegisterExchange(t *testing.T) {
 	if got.To != (Money{"PEN", "3562.00"}) {
 		t.Errorf("to = %+v, want PEN 3562.00", got.To)
 	}
-	if got.Rate != "3.2500" {
-		t.Errorf("rate = %s, want 3.2500", got.Rate)
+	if got.Rate != "3.25" {
+		t.Errorf("rate = %s, want 3.25", got.Rate)
 	}
 	if got.IncomeID == "" {
 		t.Error("income_id is empty: the PEN income was not linked")

@@ -20,11 +20,11 @@ type ExpenseService interface {
 type RegisterExpenseInput struct {
 	PeriodParam
 	Body struct {
-		CategoryID  string `json:"category_id" example:"market" doc:"Must be used in the period (see GET /periods/{period}/categories)."`
-		Currency    string `json:"currency" enum:"USD,PEN" doc:"ISO 4217 currency code."`
-		Amount      string `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"45.50" doc:"Decimal string with up to 2 decimal places."`
-		Description string `json:"description,omitempty" maxLength:"200" example:"Mercado semanal"`
-		SpentOn     string `json:"spent_on" format:"date" example:"2026-08-03"`
+		CategoryID  string       `json:"category_id" example:"market" doc:"Must be used in the period (see GET /periods/{period}/categories)."`
+		Currency    CurrencyCode `json:"currency"`
+		Amount      string       `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"45.50" doc:"Decimal string with up to 2 decimal places."`
+		Description string       `json:"description,omitempty" maxLength:"200" example:"Mercado semanal"`
+		SpentOn     string       `json:"spent_on" format:"date" example:"2026-08-03"`
 	}
 }
 
@@ -80,7 +80,7 @@ func registerExpenses(api huma.API, expenses ExpenseService) {
 		e, err := expenses.Register(ctx, expense.RegisterInput{
 			Period:      in.Period,
 			CategoryID:  in.Body.CategoryID,
-			Currency:    in.Body.Currency,
+			Currency:    string(in.Body.Currency),
 			Amount:      in.Body.Amount,
 			Description: in.Body.Description,
 			SpentOn:     in.Body.SpentOn,
