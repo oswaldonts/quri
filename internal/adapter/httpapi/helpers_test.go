@@ -1,23 +1,31 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/memory"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 )
 
-// newTestRouter wires the real services with in-memory repositories, like main does.
-func newTestRouter() http.Handler {
-	incomeRepo := memory.NewIncomeRepository()
-	exchangeSvc := exchange.NewService(memory.NewRateRepository(), memory.NewExchangeRepository(), incomeRepo)
+// newTestRouter wires the real services with a fresh SQLite database, like main does.
+func newTestRouter(t *testing.T) http.Handler {
+	t.Helper()
+	db, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	exchangeSvc := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db))
 	return NewRouter(Services{
-		Incomes:   income.NewService(incomeRepo),
+		Incomes:   income.NewService(sqlite.NewIncomeRepository(db)),
 		Rates:     exchangeSvc,
 		Exchanges: exchangeSvc,
 	})

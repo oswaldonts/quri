@@ -1,0 +1,12 @@
+# sqlc generates type-safe Go code from the SQL queries.
+#   docker compose run --rm sqlc generate
+version: "2"
+sql:
+  - engine: sqlite
+    schema: internal/adapter/sqlite/migrations
+    queries: internal/adapter/sqlite/queries
+    gen:
+      go:
+        package: sqlitedb
+        out: internal/adapter/sqlite/sqlitedb
+        emit_empty_slices: true

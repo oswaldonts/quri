@@ -93,3 +93,13 @@ func TestConvertInvalid(t *testing.T) {
 		t.Errorf("out of range: err = %v, want %v", err, ErrInvalidAmount)
 	}
 }
+
+func TestNewRate(t *testing.T) {
+	r, err := NewRate(32500)
+	if err != nil || r.String() != "3.2500" || r.Scaled() != 32500 {
+		t.Errorf("NewRate(32500) = %s (scaled %d), %v; want 3.2500", r, r.Scaled(), err)
+	}
+	if _, err := NewRate(0); !errors.Is(err, ErrInvalidRate) {
+		t.Errorf("NewRate(0): err = %v, want %v", err, ErrInvalidRate)
+	}
+}

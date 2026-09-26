@@ -139,6 +139,17 @@ func ParseRate(s string) (Rate, error) {
 	return Rate{scaled: scaled}, nil
 }
 
+// NewRate builds a Rate from its scaled integer form (e.g. 32500 for 3.25), as stored in a database.
+func NewRate(scaled int64) (Rate, error) {
+	if scaled <= 0 {
+		return Rate{}, fmt.Errorf("%w: %d must be greater than zero", ErrInvalidRate, scaled)
+	}
+	return Rate{scaled: scaled}, nil
+}
+
+// Scaled returns the rate multiplied by 10^4 (3.25 → 32500), for storage.
+func (r Rate) Scaled() int64 { return r.scaled }
+
 // String formats the rate with 4 decimal places, e.g. "3.2500".
 func (r Rate) String() string {
 	return formatDecimal(r.scaled, rateDecimals)

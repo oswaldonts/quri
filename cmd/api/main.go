@@ -2,13 +2,16 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/memory"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 )
@@ -17,14 +20,29 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
+	// run returns instead of exiting so its deferred cleanups (closing the database) execute.
+	if err := run(context.Background(), logger); err != nil {
+		logger.Error("server stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, logger *slog.Logger) error {
+	dbPath := getenv("DATABASE_PATH", "data/income.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
+		return fmt.Errorf("create database directory: %w", err)
+	}
+	db, err := sqlite.Open(ctx, dbPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
 	// Wiring: adapters are created here and injected into the core.
-	incomeRepo := memory.NewIncomeRepository()
-	incomeService := income.NewService(incomeRepo)
-	// Exchanges write their converted amount into the same income repository.
-	exchangeService := exchange.NewService(memory.NewRateRepository(), memory.NewExchangeRepository(), incomeRepo)
+	incomeService := income.NewService(sqlite.NewIncomeRepository(db))
+	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db))
 
 	addr := ":" + getenv("PORT", "8080")
-
 	srv := &http.Server{
 		Addr: addr,
 		Handler: httpapi.NewRouter(httpapi.Services{
@@ -35,11 +53,8 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	logger.Info("starting server", "addr", addr)
-	if err := srv.ListenAndServe(); err != nil {
-		logger.Error("server stopped", "error", err)
-		os.Exit(1)
-	}
+	logger.Info("starting server", "addr", addr, "database", dbPath)
+	return srv.ListenAndServe()
 }
 
 // getenv returns the value of the environment variable key, or fallback if it is unset or empty.

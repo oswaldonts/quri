@@ -33,29 +33,26 @@ func (f *fakeRates) FindRate(_ context.Context, p period.Period, from, to money.
 	return r, nil
 }
 
-type fakeExchanges struct{ saved []Exchange }
-
-func (f *fakeExchanges) Save(_ context.Context, e Exchange) error {
-	f.saved = append(f.saved, e)
-	return nil
+// fakeExchanges records exchanges and the incomes saved with them.
+type fakeExchanges struct {
+	saved   []Exchange
+	incomes []income.Income
 }
 
-type fakeIncomes struct{ saved []income.Income }
-
-func (f *fakeIncomes) Save(_ context.Context, in income.Income) error {
-	f.saved = append(f.saved, in)
+func (f *fakeExchanges) Save(_ context.Context, e Exchange, in income.Income) error {
+	f.saved = append(f.saved, e)
+	f.incomes = append(f.incomes, in)
 	return nil
 }
 
 type fixture struct {
 	svc       *Service
 	exchanges *fakeExchanges
-	incomes   *fakeIncomes
 }
 
 func newFixture() fixture {
-	f := fixture{exchanges: &fakeExchanges{}, incomes: &fakeIncomes{}}
-	f.svc = NewService(&fakeRates{rates: map[string]PeriodRate{}}, f.exchanges, f.incomes)
+	f := fixture{exchanges: &fakeExchanges{}}
+	f.svc = NewService(&fakeRates{rates: map[string]PeriodRate{}}, f.exchanges)
 	f.svc.now = func() time.Time { return time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC) }
 	ids := 0
 	f.svc.newID = func() string { ids++; return fmt.Sprintf("id-%d", ids) }
@@ -141,10 +138,10 @@ func TestRegister(t *testing.T) {
 	}
 
 	// The converted amount must be registered as an income in the target currency.
-	if len(f.incomes.saved) != 1 {
-		t.Fatalf("saved %d incomes, want 1", len(f.incomes.saved))
+	if len(f.exchanges.incomes) != 1 {
+		t.Fatalf("saved %d incomes, want 1", len(f.exchanges.incomes))
 	}
-	inc := f.incomes.saved[0]
+	inc := f.exchanges.incomes[0]
 	if inc.ID != ex.IncomeID {
 		t.Errorf("income ID = %q, exchange.IncomeID = %q", inc.ID, ex.IncomeID)
 	}
@@ -199,7 +196,7 @@ func TestRegisterWithoutRate(t *testing.T) {
 	if !errors.Is(err, ErrRateNotFound) {
 		t.Fatalf("err = %v, want %v", err, ErrRateNotFound)
 	}
-	if len(f.exchanges.saved)+len(f.incomes.saved) != 0 {
+	if len(f.exchanges.saved)+len(f.exchanges.incomes) != 0 {
 		t.Error("nothing must be saved when the rate is missing")
 	}
 }
@@ -223,7 +220,7 @@ func TestRegisterValidation(t *testing.T) {
 			if !errors.Is(err, ErrInvalidInput) {
 				t.Fatalf("err = %v, want %v", err, ErrInvalidInput)
 			}
-			if len(f.exchanges.saved)+len(f.incomes.saved) != 0 {
+			if len(f.exchanges.saved)+len(f.exchanges.incomes) != 0 {
 				t.Error("nothing must be saved on invalid input")
 			}
 		})

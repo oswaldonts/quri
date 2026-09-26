@@ -1,0 +1,18 @@
+-- name: UpsertRate :exec
+INSERT INTO rates (period, from_currency, to_currency, rate_scaled, updated_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (period, from_currency, to_currency) DO UPDATE
+SET rate_scaled = excluded.rate_scaled,
+    updated_at  = excluded.updated_at;
+
+-- name: GetRate :one
+SELECT period, from_currency, to_currency, rate_scaled, updated_at
+FROM rates
+WHERE period = ? AND from_currency = ? AND to_currency = ?;
+
+-- name: InsertExchange :exec
+INSERT INTO exchanges (
+    id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
+    rate_scaled, description, exchanged_on, income_id, created_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);

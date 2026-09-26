@@ -9,7 +9,7 @@ import (
 const ratePath = "/periods/2026-07/rates/USD-PEN"
 
 func TestRateEndpoints(t *testing.T) {
-	h := newTestRouter()
+	h := newTestRouter(t)
 
 	assertProblem(t, send(h, http.MethodGet, ratePath, ""), http.StatusNotFound)
 
@@ -47,7 +47,7 @@ func TestRateEndpointsErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assertProblem(t, send(newTestRouter(), tt.method, tt.path, tt.body), http.StatusUnprocessableEntity)
+			assertProblem(t, send(newTestRouter(t), tt.method, tt.path, tt.body), http.StatusUnprocessableEntity)
 		})
 	}
 }
@@ -61,7 +61,7 @@ const exchangeBody = `{
 }`
 
 func TestRegisterExchange(t *testing.T) {
-	h := newTestRouter()
+	h := newTestRouter(t)
 	send(h, http.MethodPut, ratePath, `{"rate": "3.25"}`)
 
 	rec := send(h, http.MethodPost, "/periods/2026-07/exchanges", exchangeBody)
@@ -85,7 +85,7 @@ func TestRegisterExchange(t *testing.T) {
 }
 
 func TestRegisterExchangeWithoutRate(t *testing.T) {
-	rec := send(newTestRouter(), http.MethodPost, "/periods/2026-07/exchanges", exchangeBody)
+	rec := send(newTestRouter(t), http.MethodPost, "/periods/2026-07/exchanges", exchangeBody)
 	assertProblem(t, rec, http.StatusConflict)
 }
 
@@ -102,7 +102,7 @@ func TestRegisterExchangeErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := newTestRouter()
+			h := newTestRouter(t)
 			send(h, http.MethodPut, ratePath, `{"rate": "3.25"}`)
 			assertProblem(t, send(h, http.MethodPost, "/periods/2026-07/exchanges", tt.body), tt.wantStatus)
 		})

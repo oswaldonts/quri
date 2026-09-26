@@ -19,7 +19,7 @@ const incomeBody = `{
 }`
 
 func TestRegisterIncome(t *testing.T) {
-	rec := send(newTestRouter(), http.MethodPost, "/periods/2026-07/incomes", incomeBody)
+	rec := send(newTestRouter(t), http.MethodPost, "/periods/2026-07/incomes", incomeBody)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusCreated, rec.Body)
@@ -66,7 +66,7 @@ func TestRegisterIncomeErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := send(newTestRouter(), http.MethodPost, tt.path, tt.body)
+			rec := send(newTestRouter(t), http.MethodPost, tt.path, tt.body)
 			assertProblem(t, rec, tt.wantStatus)
 		})
 	}

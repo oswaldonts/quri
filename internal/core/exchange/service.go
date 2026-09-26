@@ -26,24 +26,24 @@ type RateRepository interface {
 
 // Repository stores exchanges.
 type Repository interface {
-	Save(ctx context.Context, e Exchange) error
+	// Save stores the exchange together with the income it generates, atomically:
+	// either both are saved or neither is.
+	Save(ctx context.Context, e Exchange, in income.Income) error
 }
 
 // Service holds the rate and exchange use cases.
 type Service struct {
 	rates     RateRepository
 	exchanges Repository
-	incomes   income.Repository
 	now       func() time.Time
 	newID     func() string
 }
 
-// NewService returns a Service. Converted amounts are stored as incomes in incomes.
-func NewService(rates RateRepository, exchanges Repository, incomes income.Repository) *Service {
+// NewService returns a Service.
+func NewService(rates RateRepository, exchanges Repository) *Service {
 	return &Service{
 		rates:     rates,
 		exchanges: exchanges,
-		incomes:   incomes,
 		now:       time.Now,
 		newID:     rand.Text,
 	}
@@ -159,13 +159,8 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, err
 		CreatedAt:   now,
 	}
 
-	// TODO: with a database, save both in a single transaction so a failure
-	// can't leave an exchange without its income (or the other way around).
-	if err := s.exchanges.Save(ctx, ex); err != nil {
+	if err := s.exchanges.Save(ctx, ex, inc); err != nil {
 		return Exchange{}, fmt.Errorf("save exchange: %w", err)
-	}
-	if err := s.incomes.Save(ctx, inc); err != nil {
-		return Exchange{}, fmt.Errorf("save exchange income: %w", err)
 	}
 	return ex, nil
 }
