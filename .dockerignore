@@ -1,0 +1,8 @@
+# Keep the build context to what the compiler needs
+.git
+.env
+.env.*
+compose.yaml
+Dockerfile
+.dockerignore
+*.md

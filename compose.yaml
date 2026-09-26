@@ -1,0 +1,23 @@
+# Development environment: the Go toolchain runs in a container, nothing is installed on the host.
+#
+#   docker compose up                              # run the API on 127.0.0.1:8080
+#   docker compose run --rm api go test ./...      # run any go command
+#
+# Runs as the host user so generated files (go.mod, go.sum) are not owned by root.
+# Build and module caches live in the host home directory to survive container restarts.
+services:
+  api:
+    image: golang:1.27-alpine
+    working_dir: /app
+    user: "1000:1000"
+    command: go run ./cmd/api
+    environment:
+      PORT: "8080"
+      HOME: /tmp
+      GOCACHE: /go-cache/build
+      GOMODCACHE: /go-cache/mod
+    volumes:
+      - .:/app
+      - ${HOME}/.cache/go-container:/go-cache
+    ports:
+      - "127.0.0.1:8080:8080"
