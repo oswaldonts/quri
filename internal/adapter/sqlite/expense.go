@@ -28,14 +28,22 @@ func NewExpenseRepository(db *sql.DB) *ExpenseRepository {
 
 // Save inserts the expense and its tags in one transaction.
 func (r *ExpenseRepository) Save(ctx context.Context, e expense.Expense) error {
+	return r.SaveAll(ctx, []expense.Expense{e})
+}
+
+// SaveAll inserts every expense with its tags in one transaction: all or none.
+func (r *ExpenseRepository) SaveAll(ctx context.Context, es []expense.Expense) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := insertExpense(ctx, r.q.WithTx(tx), e); err != nil {
-		return err
+	q := r.q.WithTx(tx)
+	for _, e := range es {
+		if err := insertExpense(ctx, q, e); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

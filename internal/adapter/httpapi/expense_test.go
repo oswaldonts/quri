@@ -90,3 +90,63 @@ func TestRegisterExpenseErrors(t *testing.T) {
 		t.Errorf("got %d expenses, want none after invalid requests", len(es))
 	}
 }
+
+const receipt = `{
+	"category_id": "market",
+	"currency": "PEN",
+	"spent_on": "2026-08-03",
+	"items": [
+		{"description": "Chocolate Milky", "amount": "27", "tags": ["dulces"]},
+		{"description": "Pringles", "amount": "8.5", "tags": ["dulces", "snacks"]},
+		{"description": "Queso", "amount": "37", "tags": ["lácteos"]},
+		{"description": "Cine", "amount": "20", "category_id": "leisure"}
+	]
+}`
+
+func TestRegisterBatchAndFilters(t *testing.T) {
+	h := newTestRouter(t)
+
+	rec := send(h, http.MethodPost, "/periods/2026-07/expenses/batch", receipt)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusCreated, rec.Body)
+	}
+	var created []Expense
+	decode(t, rec, &created)
+	if len(created) != 4 || created[3].CategoryID != "leisure" || created[0].CategoryID != "market" {
+		t.Fatalf("created = %+v", created)
+	}
+
+	filtered := func(query string) int {
+		t.Helper()
+		var es []Expense
+		decode(t, send(h, http.MethodGet, "/periods/2026-07/expenses"+query, ""), &es)
+		return len(es)
+	}
+	if n := filtered(""); n != 4 {
+		t.Errorf("all = %d, want 4", n)
+	}
+	if n := filtered("?category_id=market"); n != 3 {
+		t.Errorf("market = %d, want 3", n)
+	}
+	if n := filtered("?tag=dulces"); n != 2 {
+		t.Errorf("dulces = %d, want 2", n)
+	}
+	if n := filtered("?category_id=market&tag=l%C3%A1cteos"); n != 1 {
+		t.Errorf("market + lácteos = %d, want 1", n)
+	}
+}
+
+func TestRegisterBatchIsAllOrNothing(t *testing.T) {
+	h := newTestRouter(t)
+	bad := strings.Replace(receipt, `"category_id": "leisure"`, `"category_id": "nope"`, 1)
+
+	p := assertProblem(t, send(h, http.MethodPost, "/periods/2026-07/expenses/batch", bad), http.StatusUnprocessableEntity)
+	if !strings.Contains(p.Detail, "item 4") {
+		t.Errorf("detail = %q, want it to name item 4", p.Detail)
+	}
+	if es := listExpenses(t, h, "2026-07"); len(es) != 0 {
+		t.Errorf("saved %d expenses, want none", len(es))
+	}
+
+	assertProblem(t, send(h, http.MethodPost, "/periods/2026-07/expenses/batch", `{"items": []}`), http.StatusUnprocessableEntity)
+}

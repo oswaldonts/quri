@@ -70,3 +70,29 @@ func TestExpenseRepository(t *testing.T) {
 		t.Errorf("expenses = %d, want 2: the failed one was not rolled back", n)
 	}
 }
+
+func TestExpenseRepositorySaveAllIsAtomic(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	repo := NewExpenseRepository(db)
+
+	ok := expense.Expense{ID: "a", Period: july, CategoryID: "market", Amount: mustMoney(t, "1", money.PEN), SpentOn: now, CreatedAt: now}
+	bad := ok
+	bad.ID, bad.CategoryID = "b", "nope" // violates the foreign key
+
+	if err := repo.SaveAll(ctx, []expense.Expense{ok, bad}); err == nil {
+		t.Fatal("SaveAll with an invalid expense must fail")
+	}
+	if n := count(t, db, "expenses"); n != 0 {
+		t.Errorf("expenses = %d, want 0: the valid one must be rolled back too", n)
+	}
+
+	second := ok
+	second.ID = "c"
+	if err := repo.SaveAll(ctx, []expense.Expense{ok, second}); err != nil {
+		t.Fatalf("SaveAll: %v", err)
+	}
+	if n := count(t, db, "expenses"); n != 2 {
+		t.Errorf("expenses = %d, want 2", n)
+	}
+}

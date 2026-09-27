@@ -2,6 +2,7 @@
 package expense
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -41,6 +42,8 @@ type Expense struct {
 // Repository is the port the service needs to persist expenses.
 type Repository interface {
 	Save(ctx context.Context, e Expense) error
+	// SaveAll stores every expense in one transaction: all or none.
+	SaveAll(ctx context.Context, es []Expense) error
 	// ListByPeriod returns the expenses of the period ordered by date.
 	ListByPeriod(ctx context.Context, p period.Period) ([]Expense, error)
 }
@@ -76,6 +79,85 @@ type RegisterInput struct {
 
 // Register validates the input and stores a new expense.
 func (s *Service) Register(ctx context.Context, in RegisterInput) (Expense, error) {
+	e, err := s.parse(in)
+	if err != nil {
+		return Expense{}, err
+	}
+	if err := s.checkCategory(ctx, e); err != nil {
+		return Expense{}, err
+	}
+	if err := s.repo.Save(ctx, e); err != nil {
+		return Expense{}, fmt.Errorf("save expense: %w", err)
+	}
+	return e, nil
+}
+
+// BatchInput registers several expenses of a period at once, e.g. the items of a
+// grocery receipt. Each item inherits the common fields unless it sets its own;
+// common tags are added to the item's tags.
+type BatchInput struct {
+	Period     string
+	CategoryID string
+	Currency   string
+	SpentOn    string
+	Tags       []string
+	Items      []BatchItem
+}
+
+// BatchItem is one line of a batch. Empty fields take the batch's common value.
+type BatchItem struct {
+	Description string
+	Amount      string
+	CategoryID  string
+	Currency    string
+	SpentOn     string
+	Tags        []string
+}
+
+// maxBatchItems bounds the size of a batch.
+const maxBatchItems = 100
+
+// RegisterBatch validates every item first and then stores all of them in one
+// transaction: either every item is saved or none is. Errors name the failing item.
+func (s *Service) RegisterBatch(ctx context.Context, in BatchInput) ([]Expense, error) {
+	if len(in.Items) == 0 {
+		return nil, invalid(errors.New("items can't be empty"))
+	}
+	if len(in.Items) > maxBatchItems {
+		return nil, invalid(fmt.Errorf("more than %d items", maxBatchItems))
+	}
+
+	expenses := make([]Expense, 0, len(in.Items))
+	for i, item := range in.Items {
+		e, err := s.parse(RegisterInput{
+			Period:      in.Period,
+			CategoryID:  cmp.Or(item.CategoryID, in.CategoryID),
+			Currency:    cmp.Or(item.Currency, in.Currency),
+			Amount:      item.Amount,
+			Description: item.Description,
+			Tags:        append(slices.Clone(in.Tags), item.Tags...),
+			SpentOn:     cmp.Or(item.SpentOn, in.SpentOn),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("item %d: %w", i+1, err)
+		}
+		expenses = append(expenses, e)
+	}
+	// Categories are checked once all items are well formed.
+	for i, e := range expenses {
+		if err := s.checkCategory(ctx, e); err != nil {
+			return nil, fmt.Errorf("item %d: %w", i+1, err)
+		}
+	}
+
+	if err := s.repo.SaveAll(ctx, expenses); err != nil {
+		return nil, fmt.Errorf("save expenses: %w", err)
+	}
+	return expenses, nil
+}
+
+// parse validates everything that doesn't need the database and builds the expense.
+func (s *Service) parse(in RegisterInput) (Expense, error) {
 	p, err := period.Parse(in.Period)
 	if err != nil {
 		return Expense{}, invalid(err)
@@ -103,41 +185,64 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Expense, erro
 	if err != nil {
 		return Expense{}, invalid(err)
 	}
-
-	c, err := s.categories.EnsureInPeriod(ctx, p, in.CategoryID)
-	if errors.Is(err, category.ErrNotFound) || errors.Is(err, category.ErrNotInPeriod) {
-		return Expense{}, invalid(err)
-	}
-	if err != nil {
-		return Expense{}, fmt.Errorf("check category: %w", err)
-	}
-	if c.IsSystem() {
-		return Expense{}, invalid(fmt.Errorf("expenses in %s are created by exchanges", c.Name))
-	}
-
-	e := Expense{
+	return Expense{
 		ID:          s.newID(),
 		Period:      p,
-		CategoryID:  c.ID,
+		CategoryID:  strings.TrimSpace(in.CategoryID),
 		Amount:      amount,
 		Description: description,
 		Tags:        tags,
 		SpentOn:     spentOn,
 		CreatedAt:   s.now().UTC(),
-	}
-	if err := s.repo.Save(ctx, e); err != nil {
-		return Expense{}, fmt.Errorf("save expense: %w", err)
-	}
-	return e, nil
+	}, nil
 }
 
-// List returns the expenses of a period ordered by date.
-func (s *Service) List(ctx context.Context, periodStr string) ([]Expense, error) {
+// checkCategory verifies that the expense's category is used in its period and is
+// not a system category. Using a category fixes the period's category list.
+func (s *Service) checkCategory(ctx context.Context, e Expense) error {
+	c, err := s.categories.EnsureInPeriod(ctx, e.Period, e.CategoryID)
+	if errors.Is(err, category.ErrNotFound) || errors.Is(err, category.ErrNotInPeriod) {
+		return invalid(err)
+	}
+	if err != nil {
+		return fmt.Errorf("check category: %w", err)
+	}
+	if c.IsSystem() {
+		return invalid(fmt.Errorf("expenses in %s are created by exchanges", c.Name))
+	}
+	return nil
+}
+
+// Filter narrows a listing; empty fields don't filter.
+type Filter struct {
+	CategoryID string
+	Tag        string // compared after normalization, so "#Dulces" matches "dulces"
+}
+
+// List returns the expenses of a period ordered by date, optionally filtered.
+func (s *Service) List(ctx context.Context, periodStr string, f Filter) ([]Expense, error) {
 	p, err := period.Parse(periodStr)
 	if err != nil {
 		return nil, invalid(err)
 	}
-	return s.repo.ListByPeriod(ctx, p)
+	var tag string
+	if strings.TrimSpace(f.Tag) != "" {
+		tags, err := NormalizeTags([]string{f.Tag})
+		if err != nil {
+			return nil, invalid(err)
+		}
+		tag = tags[0]
+	}
+
+	all, err := s.repo.ListByPeriod(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	// A month holds at most a few hundred expenses: filtering in memory is simple and fast enough.
+	return slices.DeleteFunc(all, func(e Expense) bool {
+		return (f.CategoryID != "" && e.CategoryID != f.CategoryID) ||
+			(tag != "" && !slices.Contains(e.Tags, tag))
+	}), nil
 }
 
 // NormalizeTags lowercases and trims each tag, drops a leading "#", collapses inner

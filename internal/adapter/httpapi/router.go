@@ -57,6 +57,7 @@ func NewRouter(s Services) http.Handler {
 	registerCategories(api, s.Categories)
 	registerIncomes(api, s.Incomes)
 	registerExpenses(api, s.Expenses)
+	registerExpenseBatch(api, s.Expenses)
 	registerBalances(api, s.Balances)
 	registerSummary(api, s.Summaries)
 	registerRates(api, s.Rates)
