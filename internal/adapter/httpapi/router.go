@@ -86,7 +86,10 @@ func newConfig() huma.Config {
 		{Name: tagCategories, Description: "Global catalog of expense categories. Categories are archived, never deleted."},
 		{Name: tagIncomes, Description: "Money received in a period."},
 		{Name: tagExpenses, Description: "Money spent in a period, by category."},
-		{Name: tagBalances, Description: "Real money per currency at the end of a period."},
+		{Name: tagBalances, Description: "Closing check: the money you really have per currency (accounts plus cash), " +
+			"entered by hand at the end of the month. Not to be confused with available, which the API computes " +
+			"(income − spent). The summary compares both: difference = available − real should be 0; otherwise " +
+			"an income or expense is missing or wrong."},
 		{Name: tagSummary, Description: "Overview of a period computed from its entries."},
 		{Name: tagBudgets, Description: "Planned amount per category, compared with what was spent."},
 		{Name: tagRates, Description: "Exchange rate chosen for each period and currency pair."},

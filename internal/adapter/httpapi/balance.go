@@ -73,9 +73,10 @@ func registerBalances(api huma.API, balances BalanceService) {
 		OperationID: "set-balance",
 		Method:      http.MethodPut,
 		Path:        "/periods/{period}/balances/{currency}",
-		Summary:     "Set the real balance of a currency",
-		Description: "The money that really exists in the currency at the end of the period. " +
-			"The summary compares it with the expected balance to detect unregistered entries.",
+		Summary:     "Set the real (closing) balance of a currency",
+		Description: "Enter the money you really have in the currency (accounts plus cash) when you close the month. " +
+			"It is not computed: the API computes available (income − spent, see GET /periods/{period}/available). " +
+			"The summary shows difference = available − real; 0 means every entry is registered.",
 		Tags:   []string{tagBalances},
 		Errors: []int{http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, in *SetBalanceInput) (*BalanceOutput, error) {
@@ -94,7 +95,8 @@ func registerBalances(api huma.API, balances BalanceService) {
 		OperationID: "list-balances",
 		Method:      http.MethodGet,
 		Path:        "/periods/{period}/balances",
-		Summary:     "List the real balances of a period",
+		Summary:     "List the real (closing) balances of a period",
+		Description: "Empty until you enter them with PUT at the end of the month.",
 		Tags:        []string{tagBalances},
 		Errors:      []int{http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, in *PeriodParam) (*BalanceListOutput, error) {
