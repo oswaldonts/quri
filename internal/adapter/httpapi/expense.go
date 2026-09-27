@@ -23,7 +23,8 @@ type RegisterExpenseInput struct {
 		CategoryID  string       `json:"category_id" example:"market" doc:"Must be used in the period (see GET /periods/{period}/categories)."`
 		Currency    CurrencyCode `json:"currency"`
 		Amount      string       `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"45.50" doc:"Decimal string with up to 2 decimal places."`
-		Description string       `json:"description,omitempty" maxLength:"200" example:"Mercado semanal"`
+		Description string       `json:"description,omitempty" maxLength:"200" example:"Chocolate Milky"`
+		Tags        []string     `json:"tags,omitempty" maxItems:"10" example:"[\"dulces\"]" doc:"Kinds of expense, e.g. dulces or lácteos. Normalized to lowercase; a leading # is dropped."`
 		SpentOn     string       `json:"spent_on" format:"date" example:"2026-08-03"`
 	}
 }
@@ -36,6 +37,7 @@ type Expense struct {
 	Currency    string    `json:"currency" example:"PEN"`
 	Amount      string    `json:"amount" example:"45.50"`
 	Description string    `json:"description"`
+	Tags        []string  `json:"tags"`
 	SpentOn     string    `json:"spent_on" format:"date" example:"2026-08-03"`
 	ExchangeID  string    `json:"exchange_id,omitempty" doc:"Set when the expense is the source side of an exchange."`
 	CreatedAt   time.Time `json:"created_at"`
@@ -49,6 +51,7 @@ func toExpense(e expense.Expense) Expense {
 		Currency:    string(e.Amount.Currency()),
 		Amount:      e.Amount.String(),
 		Description: e.Description,
+		Tags:        append([]string{}, e.Tags...), // never null in JSON
 		SpentOn:     e.SpentOn.Format(time.DateOnly),
 		ExchangeID:  e.ExchangeID,
 		CreatedAt:   e.CreatedAt,
@@ -83,6 +86,7 @@ func registerExpenses(api huma.API, expenses ExpenseService) {
 			Currency:    string(in.Body.Currency),
 			Amount:      in.Body.Amount,
 			Description: in.Body.Description,
+			Tags:        in.Body.Tags,
 			SpentOn:     in.Body.SpentOn,
 		})
 		if err != nil {

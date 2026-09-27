@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +99,11 @@ func TestRegisterValidation(t *testing.T) {
 		{"unknown category", func(in *RegisterInput) { in.CategoryID = "nope" }},
 		{"category not used in the period", func(in *RegisterInput) { in.CategoryID = "unused" }},
 		{"system category", func(in *RegisterInput) { in.CategoryID = "exchange" }},
+		{"empty tag", func(in *RegisterInput) { in.Tags = []string{"dulces", "  "} }},
+		{"long tag", func(in *RegisterInput) { in.Tags = []string{strings.Repeat("a", 31)} }},
+		{"too many tags", func(in *RegisterInput) {
+			in.Tags = []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -119,5 +125,31 @@ func TestRegisterValidation(t *testing.T) {
 func TestListBadPeriod(t *testing.T) {
 	if _, err := newTestService(&fakeRepo{}).List(context.Background(), "julio"); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("err = %v, want %v", err, ErrInvalidInput)
+	}
+}
+
+func TestNormalizeTags(t *testing.T) {
+	got, err := NormalizeTags([]string{"#Dulces", " dulces ", "Frutos   Secos", "snacks"})
+	if err != nil {
+		t.Fatalf("NormalizeTags: %v", err)
+	}
+	want := []string{"dulces", "frutos secos", "snacks"}
+	if !slices.Equal(got, want) {
+		t.Errorf("NormalizeTags = %q, want %q", got, want)
+	}
+	if got, _ := NormalizeTags(nil); len(got) != 0 {
+		t.Errorf("NormalizeTags(nil) = %q, want empty", got)
+	}
+}
+
+func TestRegisterWithTags(t *testing.T) {
+	in := validInput()
+	in.Tags = []string{"Lácteos", "#desayuno"}
+	got, err := newTestService(&fakeRepo{}).Register(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if want := []string{"desayuno", "lácteos"}; !slices.Equal(got.Tags, want) {
+		t.Errorf("Tags = %q, want %q", got.Tags, want)
 	}
 }

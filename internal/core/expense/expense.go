@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -18,7 +19,11 @@ import (
 // ErrInvalidInput wraps every validation error.
 var ErrInvalidInput = errors.New("invalid input")
 
-const maxDescriptionLength = 200
+const (
+	maxDescriptionLength = 200
+	maxTags              = 10
+	maxTagLength         = 30
+)
 
 // Expense is money spent in a period, in one currency and one category.
 type Expense struct {
@@ -27,6 +32,7 @@ type Expense struct {
 	CategoryID  string
 	Amount      money.Money
 	Description string
+	Tags        []string // normalized (lowercase, trimmed), unique and sorted
 	SpentOn     time.Time
 	ExchangeID  string // set when the expense is the source side of a currency exchange
 	CreatedAt   time.Time
@@ -59,12 +65,13 @@ func NewService(repo Repository, categories CategoryResolver) *Service {
 
 // RegisterInput carries the raw values of a new expense.
 type RegisterInput struct {
-	Period      string // YYYY-MM
-	CategoryID  string // must be used in the period
-	Currency    string // ISO 4217 code
-	Amount      string // decimal string, e.g. "45.50"
-	Description string // optional, up to 200 characters
-	SpentOn     string // YYYY-MM-DD
+	Period      string   // YYYY-MM
+	CategoryID  string   // must be used in the period
+	Currency    string   // ISO 4217 code
+	Amount      string   // decimal string, e.g. "45.50"
+	Description string   // optional, up to 200 characters
+	Tags        []string // optional kinds of expense, e.g. "dulces"; normalized by NormalizeTags
+	SpentOn     string   // YYYY-MM-DD
 }
 
 // Register validates the input and stores a new expense.
@@ -92,6 +99,10 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Expense, erro
 	if err != nil {
 		return Expense{}, invalid(fmt.Errorf("spent_on %q (want YYYY-MM-DD)", in.SpentOn))
 	}
+	tags, err := NormalizeTags(in.Tags)
+	if err != nil {
+		return Expense{}, invalid(err)
+	}
 
 	c, err := s.categories.EnsureInPeriod(ctx, p, in.CategoryID)
 	if errors.Is(err, category.ErrNotFound) || errors.Is(err, category.ErrNotInPeriod) {
@@ -110,6 +121,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Expense, erro
 		CategoryID:  c.ID,
 		Amount:      amount,
 		Description: description,
+		Tags:        tags,
 		SpentOn:     spentOn,
 		CreatedAt:   s.now().UTC(),
 	}
@@ -126,6 +138,28 @@ func (s *Service) List(ctx context.Context, periodStr string) ([]Expense, error)
 		return nil, invalid(err)
 	}
 	return s.repo.ListByPeriod(ctx, p)
+}
+
+// NormalizeTags lowercases and trims each tag, drops a leading "#", collapses inner
+// spaces, removes duplicates and sorts: ["#Dulces", "dulces ", "Snacks"] → ["dulces", "snacks"].
+func NormalizeTags(raw []string) ([]string, error) {
+	tags := make([]string, 0, len(raw))
+	for _, r := range raw {
+		tag := strings.ToLower(strings.Join(strings.Fields(strings.TrimPrefix(strings.TrimSpace(r), "#")), " "))
+		if tag == "" {
+			return nil, errors.New("tags can't be empty")
+		}
+		if utf8.RuneCountInString(tag) > maxTagLength {
+			return nil, fmt.Errorf("tag %q longer than %d characters", tag, maxTagLength)
+		}
+		tags = append(tags, tag)
+	}
+	slices.Sort(tags)
+	tags = slices.Compact(tags)
+	if len(tags) > maxTags {
+		return nil, fmt.Errorf("more than %d tags", maxTags)
+	}
+	return tags, nil
 }
 
 func invalid(err error) error {

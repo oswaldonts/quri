@@ -17,6 +17,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 )
 
 func main() {
@@ -44,9 +45,13 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// Wiring: adapters are created here and injected into the core.
 	categoryRepo := sqlite.NewCategoryRepository(db)
 	categoryService := category.NewService(categoryRepo, categoryRepo)
-	incomeService := income.NewService(sqlite.NewIncomeRepository(db), categoryService)
-	balanceService := balance.NewService(sqlite.NewBalanceRepository(db))
-	expenseService := expense.NewService(sqlite.NewExpenseRepository(db), categoryService)
+	incomeRepo := sqlite.NewIncomeRepository(db)
+	expenseRepo := sqlite.NewExpenseRepository(db)
+	balanceRepo := sqlite.NewBalanceRepository(db)
+	incomeService := income.NewService(incomeRepo, categoryService)
+	balanceService := balance.NewService(balanceRepo)
+	expenseService := expense.NewService(expenseRepo, categoryService)
+	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo)
 	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService)
 
 	addr := ":" + getenv("PORT", "8080")
@@ -57,6 +62,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			Incomes:    incomeService,
 			Expenses:   expenseService,
 			Balances:   balanceService,
+			Summaries:  summaryService,
 			Rates:      exchangeService,
 			Exchanges:  exchangeService,
 		}),

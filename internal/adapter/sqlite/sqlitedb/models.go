@@ -51,6 +51,11 @@ type Expense struct {
 	CreatedAt   string
 }
 
+type ExpenseTag struct {
+	ExpenseID string
+	Tag       string
+}
+
 type Income struct {
 	ID          string
 	Period      string

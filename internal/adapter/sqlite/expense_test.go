@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func TestExpenseRepository(t *testing.T) {
 	later := expense.Expense{ID: "e2", Period: july, CategoryID: "market", Amount: mustMoney(t, "20.00", money.PEN),
 		SpentOn: now.AddDate(0, 0, 5), CreatedAt: now}
 	earlier := expense.Expense{ID: "e1", Period: july, CategoryID: "market", Amount: mustMoney(t, "45.50", money.PEN),
-		Description: "Mercado", SpentOn: now, CreatedAt: now}
+		Description: "Mercado", Tags: []string{"dulces", "lácteos"}, SpentOn: now, CreatedAt: now}
 	for _, e := range []expense.Expense{later, earlier} {
 		if err := repo.Save(ctx, e); err != nil {
 			t.Fatalf("Save %s: %v", e.ID, err)
@@ -36,6 +37,9 @@ func TestExpenseRepository(t *testing.T) {
 	if e := got[0]; e.Amount.String() != "45.50" || e.Amount.Currency() != money.PEN ||
 		e.Description != "Mercado" || !e.SpentOn.Equal(now.Truncate(24*time.Hour)) || e.ExchangeID != "" {
 		t.Errorf("round trip = %+v", e)
+	}
+	if !slices.Equal(got[0].Tags, []string{"dulces", "lácteos"}) || len(got[1].Tags) != 0 {
+		t.Errorf("tags = %q and %q, want [dulces lácteos] and none", got[0].Tags, got[1].Tags)
 	}
 
 	if has, _ := categories.HasEntries(ctx, july, "market"); !has {
@@ -54,5 +58,15 @@ func TestExpenseRepository(t *testing.T) {
 	bad.ID, bad.CategoryID = "e3", "nope"
 	if err := repo.Save(ctx, bad); err == nil {
 		t.Error("unknown category must fail")
+	}
+
+	// A failing tag insert rolls the whole expense back.
+	dupTag := earlier
+	dupTag.ID, dupTag.Tags = "e4", []string{"x", "x"}
+	if err := repo.Save(ctx, dupTag); err == nil {
+		t.Fatal("duplicated tag must fail")
+	}
+	if n := count(t, db, "expenses"); n != 2 {
+		t.Errorf("expenses = %d, want 2: the failed one was not rolled back", n)
 	}
 }

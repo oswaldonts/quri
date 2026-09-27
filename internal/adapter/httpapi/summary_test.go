@@ -1,0 +1,66 @@
+package httpapi
+
+import (
+	"net/http"
+	"testing"
+)
+
+// TestSummary registers a small month end to end and checks the computed overview.
+func TestSummary(t *testing.T) {
+	h := newTestRouter(t)
+	post := func(path, body string) {
+		t.Helper()
+		if rec := send(h, http.MethodPost, path, body); rec.Code != http.StatusCreated {
+			t.Fatalf("POST %s: status = %d (body: %s)", path, rec.Code, rec.Body)
+		}
+	}
+
+	post("/periods/2026-07/incomes", `{"currency": "USD", "amount": "1330", "kind": "salary", "received_on": "2026-07-31"}`)
+	send(h, http.MethodPut, "/periods/2026-07/rates/USD-PEN", `{"rate": "3.25"}`)
+	post("/periods/2026-07/exchanges", `{"from": "USD", "to": "PEN", "amount": "1096", "exchanged_on": "2026-08-01"}`)
+	post("/periods/2026-07/incomes", `{"currency": "PEN", "amount": "108", "kind": "extra", "category_id": "loans", "received_on": "2026-08-01"}`)
+	post("/periods/2026-07/expenses", `{"category_id": "loans", "currency": "PEN", "amount": "462", "spent_on": "2026-08-05"}`)
+	post("/periods/2026-07/expenses", `{"category_id": "market", "currency": "PEN", "amount": "27", "description": "Chocolate Milky", "tags": ["#Dulces"], "spent_on": "2026-08-03"}`)
+	post("/periods/2026-07/expenses", `{"category_id": "market", "currency": "PEN", "amount": "37", "description": "Queso", "tags": ["lácteos"], "spent_on": "2026-08-03"}`)
+	send(h, http.MethodPut, "/periods/2026-07/balances/PEN", `{"amount": "3180"}`)
+
+	rec := send(h, http.MethodGet, "/periods/2026-07/summary", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d (body: %s)", rec.Code, rec.Body)
+	}
+	var s Summary
+	decode(t, rec, &s)
+
+	if s.Period != "2026-07" || s.SpendMonth != "2026-08" || len(s.Currencies) != 2 {
+		t.Fatalf("summary = %+v", s)
+	}
+	pen, usd := s.Currencies[0], s.Currencies[1]
+
+	// PEN: 3562 + 108 = 3670 received; 462 + 27 + 37 = 526 spent; 3144 available; real 3180.
+	if pen.Currency != "PEN" || pen.Income.Total != "3670.00" || pen.Spent != "526.00" ||
+		pen.Available != "3144.00" || pen.Real != "3180.00" || pen.Difference != "-36.00" {
+		t.Errorf("PEN = total %s spent %s available %s real %s difference %s",
+			pen.Income.Total, pen.Spent, pen.Available, pen.Real, pen.Difference)
+	}
+	if pen.Categories[0].ID != "loans" || pen.Categories[0].Contributed != "108.00" {
+		t.Errorf("top PEN category = %+v, want Créditos with the contribution", pen.Categories[0])
+	}
+	if len(pen.Tags) != 2 || pen.Tags[0].Tag != "lácteos" || pen.Tags[1].Tag != "dulces" {
+		t.Errorf("PEN tags = %+v, want lácteos (37) then dulces (27)", pen.Tags)
+	}
+
+	// USD: the exchange is reported apart; no real balance registered.
+	if usd.Currency != "USD" || usd.Exchanged != "1096.00" || usd.Available != "234.00" || usd.Real != "" || usd.Difference != "" {
+		t.Errorf("USD = %+v", usd)
+	}
+}
+
+func TestSummaryEmptyAndInvalid(t *testing.T) {
+	h := newTestRouter(t)
+	var s Summary
+	decode(t, send(h, http.MethodGet, "/periods/2030-01/summary", ""), &s)
+	if len(s.Currencies) != 0 {
+		t.Errorf("empty period: %d currencies, want 0", len(s.Currencies))
+	}
+	assertProblem(t, send(h, http.MethodGet, "/periods/2030-1/summary", ""), http.StatusUnprocessableEntity)
+}

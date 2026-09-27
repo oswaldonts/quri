@@ -61,6 +61,51 @@ func (q *Queries) InsertExpense(ctx context.Context, arg InsertExpenseParams) er
 	return err
 }
 
+const insertExpenseTag = `-- name: InsertExpenseTag :exec
+INSERT INTO expense_tags (expense_id, tag) VALUES (?, ?)
+`
+
+type InsertExpenseTagParams struct {
+	ExpenseID string
+	Tag       string
+}
+
+func (q *Queries) InsertExpenseTag(ctx context.Context, arg InsertExpenseTagParams) error {
+	_, err := q.db.ExecContext(ctx, insertExpenseTag, arg.ExpenseID, arg.Tag)
+	return err
+}
+
+const listExpenseTagsByPeriod = `-- name: ListExpenseTagsByPeriod :many
+SELECT expense_tags.expense_id, expense_tags.tag
+FROM expense_tags
+JOIN expenses ON expenses.id = expense_tags.expense_id
+WHERE expenses.period = ?
+ORDER BY expense_tags.expense_id, expense_tags.tag
+`
+
+func (q *Queries) ListExpenseTagsByPeriod(ctx context.Context, period string) ([]ExpenseTag, error) {
+	rows, err := q.db.QueryContext(ctx, listExpenseTagsByPeriod, period)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExpenseTag{}
+	for rows.Next() {
+		var i ExpenseTag
+		if err := rows.Scan(&i.ExpenseID, &i.Tag); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listExpensesByPeriod = `-- name: ListExpensesByPeriod :many
 SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at
 FROM expenses

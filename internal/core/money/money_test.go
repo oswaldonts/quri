@@ -104,3 +104,20 @@ func TestCurrencies(t *testing.T) {
 		t.Errorf("Currencies() = %v, want %v (sorted)", got, want)
 	}
 }
+
+func TestZeroAndSub(t *testing.T) {
+	zero := Zero(PEN)
+	if zero.String() != "0.00" || zero.Currency() != PEN || zero.IsPositive() {
+		t.Errorf("Zero(PEN) = %s %s", zero, zero.Currency())
+	}
+	a, _ := Parse("408.50", PEN)
+	b, _ := Parse("415.50", PEN)
+	diff, err := a.Sub(b)
+	if err != nil || diff.String() != "-7.00" {
+		t.Errorf("408.50 - 415.50 = %s, %v; want -7.00", diff, err)
+	}
+	usd, _ := Parse("1", USD)
+	if _, err := a.Sub(usd); !errors.Is(err, ErrCurrencyMismatch) {
+		t.Errorf("err = %v, want %v", err, ErrCurrencyMismatch)
+	}
+}

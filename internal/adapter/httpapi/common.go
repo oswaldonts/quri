@@ -13,6 +13,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 )
 
 // PeriodParam is the {period} path parameter shared by every period route.
@@ -57,7 +58,8 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		errors.Is(err, exchange.ErrInvalidInput),
 		errors.Is(err, category.ErrInvalidInput),
 		errors.Is(err, expense.ErrInvalidInput),
-		errors.Is(err, balance.ErrInvalidInput):
+		errors.Is(err, balance.ErrInvalidInput),
+		errors.Is(err, summary.ErrInvalidInput):
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, category.ErrNotFound):
 		return huma.Error404NotFound(err.Error())

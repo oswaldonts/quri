@@ -37,6 +37,7 @@ type Services struct {
 	Incomes    IncomeService
 	Expenses   ExpenseService
 	Balances   BalanceService
+	Summaries  SummaryService
 	Rates      RateManager
 	Exchanges  ExchangeRegistrar
 }
@@ -57,6 +58,7 @@ func NewRouter(s Services) http.Handler {
 	registerIncomes(api, s.Incomes)
 	registerExpenses(api, s.Expenses)
 	registerBalances(api, s.Balances)
+	registerSummary(api, s.Summaries)
 	registerRates(api, s.Rates)
 	registerExchanges(api, s.Exchanges)
 
@@ -78,6 +80,7 @@ func newConfig() huma.Config {
 		{Name: tagIncomes, Description: "Money received in a period."},
 		{Name: tagExpenses, Description: "Money spent in a period, by category."},
 		{Name: tagBalances, Description: "Real money per currency at the end of a period."},
+		{Name: tagSummary, Description: "Overview of a period computed from its entries."},
 		{Name: tagRates, Description: "Exchange rate chosen for each period and currency pair."},
 		{Name: tagExchanges, Description: "Currency conversions made with the period rate."},
 	}
@@ -90,6 +93,7 @@ const (
 	tagIncomes    = "Incomes"
 	tagExpenses   = "Expenses"
 	tagBalances   = "Balances"
+	tagSummary    = "Summary"
 	tagRates      = "Rates"
 	tagExchanges  = "Exchanges"
 )

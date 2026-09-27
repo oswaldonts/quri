@@ -103,6 +103,19 @@ func (m Money) Add(other Money) (Money, error) {
 	return Money{amount: m.amount + other.amount, currency: m.currency}, nil
 }
 
+// Zero returns an amount of zero in currency c (c must be supported).
+func Zero(c Currency) Money {
+	return Money{currency: c}
+}
+
+// Sub returns m minus other; both must be in the same currency.
+func (m Money) Sub(other Money) (Money, error) {
+	if m.currency != other.currency {
+		return Money{}, fmt.Errorf("%w: %s and %s", ErrCurrencyMismatch, m.currency, other.currency)
+	}
+	return Money{amount: m.amount - other.amount, currency: m.currency}, nil
+}
+
 // Convert multiplies m by r and expresses the result in currency to.
 // Any fraction smaller than the target minor unit is truncated toward zero,
 // e.g. 1096.37 USD × 3.2567 = 3570.548179 → 3570.54 PEN.

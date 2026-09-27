@@ -38,6 +38,7 @@ func TestDocs(t *testing.T) {
 		"/periods/{period}/expenses:",
 		"/periods/{period}/balances:",
 		"/periods/{period}/balances/{currency}:",
+		"/periods/{period}/summary:",
 		"/periods/{period}/rates/{pair}:",
 		"/periods/{period}/exchanges:",
 	} {

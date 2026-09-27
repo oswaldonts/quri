@@ -15,6 +15,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 )
 
 // newTestRouter wires the real services with a fresh SQLite database, like main does.
@@ -29,11 +30,15 @@ func newTestRouter(t *testing.T) http.Handler {
 	categoryRepo := sqlite.NewCategoryRepository(db)
 	categorySvc := category.NewService(categoryRepo, categoryRepo)
 	exchangeSvc := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categorySvc)
+	incomeRepo := sqlite.NewIncomeRepository(db)
+	expenseRepo := sqlite.NewExpenseRepository(db)
+	balanceRepo := sqlite.NewBalanceRepository(db)
 	return NewRouter(Services{
 		Categories: categorySvc,
-		Incomes:    income.NewService(sqlite.NewIncomeRepository(db), categorySvc),
-		Balances:   balance.NewService(sqlite.NewBalanceRepository(db)),
-		Expenses:   expense.NewService(sqlite.NewExpenseRepository(db), categorySvc),
+		Incomes:    income.NewService(incomeRepo, categorySvc),
+		Balances:   balance.NewService(balanceRepo),
+		Summaries:  summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo),
+		Expenses:   expense.NewService(expenseRepo, categorySvc),
 		Rates:      exchangeSvc,
 		Exchanges:  exchangeSvc,
 	})
