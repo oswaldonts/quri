@@ -14,6 +14,7 @@ import (
 type SummaryService interface {
 	Get(ctx context.Context, period string) (summary.Summary, error)
 	Trends(ctx context.Context, in summary.TrendsInput) (summary.Trends, error)
+	Available(ctx context.Context, period string) ([]summary.Available, error)
 }
 
 // Summary is the overview of a period.
@@ -267,5 +268,46 @@ func registerTrends(api huma.API, summaries SummaryService) {
 			return nil, toHTTPError(ctx, "get trends", err)
 		}
 		return &TrendsOutput{Body: toTrends(t)}, nil
+	})
+}
+
+// Available is what is left of a period in one currency.
+type Available struct {
+	Currency  string `json:"currency" example:"PEN"`
+	Income    string `json:"income" example:"4018.00" doc:"Every income of the period: salary, exchanges and extras."`
+	Spent     string `json:"spent" example:"1000.00" doc:"Every expense of the period, including the exchanges."`
+	Available string `json:"available" example:"3018.00" doc:"income − spent: the money left."`
+}
+
+// AvailableOutput is the response of GET /periods/{period}/available.
+type AvailableOutput struct {
+	Body []Available
+}
+
+func registerAvailable(api huma.API, summaries SummaryService) {
+	huma.Register(api, huma.Operation{
+		OperationID: "get-available",
+		Method:      http.MethodGet,
+		Path:        "/periods/{period}/available",
+		Summary:     "Money left in a period",
+		Description: "Per currency, income − spent. The quick answer to \"how much do I have left?\"; " +
+			"the summary has the same figure plus the detail by category, tag and item.",
+		Tags:   []string{tagSummary},
+		Errors: []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *PeriodParam) (*AvailableOutput, error) {
+		as, err := summaries.Available(ctx, in.Period)
+		if err != nil {
+			return nil, toHTTPError(ctx, "get available", err)
+		}
+		out := &AvailableOutput{Body: make([]Available, 0, len(as))}
+		for _, a := range as {
+			out.Body = append(out.Body, Available{
+				Currency:  string(a.Currency),
+				Income:    a.Income.String(),
+				Spent:     a.Spent.String(),
+				Available: a.Available.String(),
+			})
+		}
+		return out, nil
 	})
 }

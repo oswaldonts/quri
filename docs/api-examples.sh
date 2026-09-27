@@ -85,6 +85,9 @@ section "Real balance"
 "${CURL[@]}" -X PUT "$API/periods/$P/balances/USD" "${JSON[@]}" -d '{"amount": "154.00"}' | jq -c .
 "${CURL[@]}" "$API/periods/$P/balances" | jq -c '.[] | {currency, amount}'
 
+section "Available: how much is left"
+"${CURL[@]}" "$API/periods/$P/available" | jq -c '.[]'
+
 section "Summary"
 "${CURL[@]}" "$API/periods/$P/summary" | jq '.currencies[] | {
   currency, income: .income.total, spent, available, real, difference, budgeted,
