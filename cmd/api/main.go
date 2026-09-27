@@ -96,7 +96,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	case <-ctx.Done():
 	}
 
-	logger.Info("shutting down", "timeout", shutdownTimeout)
+	logger.Info("shutting down", "timeout", shutdownTimeout.String())
 	// A fresh context: ctx is already canceled, but the shutdown needs its own deadline.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
