@@ -24,9 +24,9 @@ func TestTrends(t *testing.T) {
 	if tr.Months != 3 || len(tr.Periods) != 3 || tr.Periods[1].Spent != "0.00" {
 		t.Errorf("periods = %+v", tr.Periods)
 	}
-	if len(tr.Categories) != 2 || tr.Categories[0].ID != "market" || tr.Categories[0].Total != "150.00" ||
-		tr.Categories[0].Average != "50.00" || len(tr.Categories[0].Series) != 3 {
-		t.Errorf("categories = %+v", tr.Categories)
+	if len(tr.Expenses) != 2 || tr.Expenses[0].CategoryID != "market" || tr.Expenses[0].Total != "150.00" ||
+		tr.Expenses[0].Average != "50.00" || len(tr.Expenses[0].Series) != 3 {
+		t.Errorf("expenses = %+v", tr.Expenses)
 	}
 	if len(tr.Tags) != 1 || tr.Tags[0].Tag != "dulces" {
 		t.Errorf("tags = %+v", tr.Tags)

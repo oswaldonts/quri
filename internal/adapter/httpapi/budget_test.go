@@ -27,9 +27,9 @@ func TestBudgetsInSummary(t *testing.T) {
 	if pen.Budgeted != "110.00" {
 		t.Errorf("budgeted = %q, want 110.00", pen.Budgeted)
 	}
-	byID := map[string]CategoryTotal{}
-	for _, ct := range pen.Categories {
-		byID[ct.ID] = ct
+	byID := map[string]ExpenseTotal{}
+	for _, ct := range pen.Expenses {
+		byID[ct.CategoryID] = ct
 	}
 	if m := byID["market"]; m.Budget != "80.00" || m.Remaining != "-17.50" {
 		t.Errorf("Mercado = budget %q remaining %q, want 80.00 and -17.50", m.Budget, m.Remaining)

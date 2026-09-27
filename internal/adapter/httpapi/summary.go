@@ -36,7 +36,7 @@ type CurrencySummary struct {
 		Total    string `json:"total"`
 	} `json:"income"`
 	Contributions []ContributionTotal `json:"contributions" doc:"Extra incomes assigned to a category (aportes), highest first. They are income, already counted in income.extra."`
-	Categories    []CategoryTotal     `json:"categories" doc:"Categories with expenses or a budget, by amount spent (highest first)."`
+	Expenses      []ExpenseTotal      `json:"expenses" doc:"Spending per category (categories with expenses or a budget), highest first."`
 	Groups        []GroupTotal        `json:"groups" doc:"By amount spent (highest first)."`
 	Tags          []TagTotal          `json:"tags" doc:"By amount spent. An expense with several tags counts in each one."`
 	TopItems      []ItemTotal         `json:"top_items" doc:"Up to 10 descriptions with the most money spent (case-insensitive; exchanges excluded)."`
@@ -60,16 +60,16 @@ type ContributionTotal struct {
 	Count      int    `json:"count" doc:"Number of contributions."`
 }
 
-// CategoryTotal is what was spent in a category in a currency.
-type CategoryTotal struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Group     string `json:"group"`
-	Committed bool   `json:"committed"`
-	Spent     string `json:"spent"`
-	Count     int    `json:"count" doc:"Number of expenses."`
-	Budget    string `json:"budget,omitempty" doc:"Planned amount, if the category has a budget."`
-	Remaining string `json:"remaining,omitempty" doc:"budget − spent; negative when over budget."`
+// ExpenseTotal is what was spent in a category in a currency.
+type ExpenseTotal struct {
+	CategoryID string `json:"category_id"`
+	Name       string `json:"name"`
+	Group      string `json:"group"`
+	Committed  bool   `json:"committed"`
+	Spent      string `json:"spent"`
+	Count      int    `json:"count" doc:"Number of expenses."`
+	Budget     string `json:"budget,omitempty" doc:"Planned amount, if the category has a budget."`
+	Remaining  string `json:"remaining,omitempty" doc:"budget − spent; negative when over budget."`
 }
 
 // GroupTotal is the money spent in a group.
@@ -113,7 +113,7 @@ func toCurrencySummary(c summary.CurrencySummary) CurrencySummary {
 	cs := CurrencySummary{
 		Currency:      string(c.Currency),
 		Contributions: make([]ContributionTotal, 0, len(c.Contributions)),
-		Categories:    make([]CategoryTotal, 0, len(c.Categories)),
+		Expenses:      make([]ExpenseTotal, 0, len(c.Categories)),
 		Groups:        make([]GroupTotal, 0, len(c.Groups)),
 		Tags:          make([]TagTotal, 0, len(c.Tags)),
 		TopItems:      make([]ItemTotal, 0, len(c.TopItems)),
@@ -142,15 +142,15 @@ func toCurrencySummary(c summary.CurrencySummary) CurrencySummary {
 		})
 	}
 	for _, ct := range c.Categories {
-		cs.Categories = append(cs.Categories, CategoryTotal{
-			ID:        ct.Category.ID,
-			Name:      ct.Category.Name,
-			Group:     string(ct.Category.Group),
-			Committed: ct.Category.Committed,
-			Spent:     ct.Spent.String(),
-			Count:     ct.Count,
-			Budget:    optional(ct.Budget),
-			Remaining: optional(ct.Remaining),
+		cs.Expenses = append(cs.Expenses, ExpenseTotal{
+			CategoryID: ct.Category.ID,
+			Name:       ct.Category.Name,
+			Group:      string(ct.Category.Group),
+			Committed:  ct.Category.Committed,
+			Spent:      ct.Spent.String(),
+			Count:      ct.Count,
+			Budget:     optional(ct.Budget),
+			Remaining:  optional(ct.Remaining),
 		})
 	}
 	for _, g := range c.Groups {
@@ -248,13 +248,13 @@ type TrendsInput struct {
 
 // Trends compares several consecutive periods in one currency.
 type Trends struct {
-	From       string          `json:"from" example:"2026-01"`
-	To         string          `json:"to" example:"2026-06"`
-	Currency   string          `json:"currency" example:"PEN"`
-	Months     int             `json:"months"`
-	Periods    []PeriodTrend   `json:"periods" doc:"One per month in order, including months without activity."`
-	Categories []CategoryTrend `json:"categories" doc:"By total spent in the range, highest first."`
-	Tags       []TagTrend      `json:"tags" doc:"By total spent in the range, highest first."`
+	From     string         `json:"from" example:"2026-01"`
+	To       string         `json:"to" example:"2026-06"`
+	Currency string         `json:"currency" example:"PEN"`
+	Months   int            `json:"months"`
+	Periods  []PeriodTrend  `json:"periods" doc:"One per month in order, including months without activity."`
+	Expenses []ExpenseTrend `json:"expenses" doc:"Spending per category across the range, by total (highest first)."`
+	Tags     []TagTrend     `json:"tags" doc:"By total spent in the range, highest first."`
 }
 
 // PeriodTrend is the headline of one month.
@@ -265,14 +265,14 @@ type PeriodTrend struct {
 	Available string `json:"available"`
 }
 
-// CategoryTrend is the spending of a category across the range.
-type CategoryTrend struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Group   string   `json:"group"`
-	Total   string   `json:"total"`
-	Average string   `json:"average" doc:"Total divided by the number of months, truncated."`
-	Series  []string `json:"series" doc:"Spent per month, aligned with periods."`
+// ExpenseTrend is the spending of a category across the range.
+type ExpenseTrend struct {
+	CategoryID string   `json:"category_id"`
+	Name       string   `json:"name"`
+	Group      string   `json:"group"`
+	Total      string   `json:"total"`
+	Average    string   `json:"average" doc:"Total divided by the number of months, truncated."`
+	Series     []string `json:"series" doc:"Spent per month, aligned with periods."`
 }
 
 // TagTrend is the spending with a tag across the range.
@@ -298,13 +298,13 @@ func toStrings(ms []money.Money) []string {
 
 func toTrends(t summary.Trends) Trends {
 	out := Trends{
-		From:       t.From.String(),
-		To:         t.To.String(),
-		Currency:   string(t.Currency),
-		Months:     t.Months,
-		Periods:    make([]PeriodTrend, 0, len(t.Periods)),
-		Categories: make([]CategoryTrend, 0, len(t.Categories)),
-		Tags:       make([]TagTrend, 0, len(t.Tags)),
+		From:     t.From.String(),
+		To:       t.To.String(),
+		Currency: string(t.Currency),
+		Months:   t.Months,
+		Periods:  make([]PeriodTrend, 0, len(t.Periods)),
+		Expenses: make([]ExpenseTrend, 0, len(t.Categories)),
+		Tags:     make([]TagTrend, 0, len(t.Tags)),
 	}
 	for _, p := range t.Periods {
 		out.Periods = append(out.Periods, PeriodTrend{
@@ -312,8 +312,8 @@ func toTrends(t summary.Trends) Trends {
 		})
 	}
 	for _, c := range t.Categories {
-		out.Categories = append(out.Categories, CategoryTrend{
-			ID: c.Category.ID, Name: c.Category.Name, Group: string(c.Category.Group),
+		out.Expenses = append(out.Expenses, ExpenseTrend{
+			CategoryID: c.Category.ID, Name: c.Category.Name, Group: string(c.Category.Group),
 			Total: c.Total.String(), Average: c.Average.String(), Series: toStrings(c.Series),
 		})
 	}

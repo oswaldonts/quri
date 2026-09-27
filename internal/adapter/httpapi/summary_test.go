@@ -42,8 +42,8 @@ func TestSummary(t *testing.T) {
 		t.Errorf("PEN = total %s spent %s available %s real %s difference %s",
 			pen.Income.Total, pen.Spent, pen.Available, pen.Real, pen.Difference)
 	}
-	if pen.Categories[0].ID != "loans" || pen.Categories[0].Spent != "462.00" {
-		t.Errorf("top PEN category = %+v, want Créditos with 462.00 spent", pen.Categories[0])
+	if pen.Expenses[0].CategoryID != "loans" || pen.Expenses[0].Spent != "462.00" {
+		t.Errorf("top PEN category = %+v, want Créditos with 462.00 spent", pen.Expenses[0])
 	}
 	if len(pen.Contributions) != 1 || pen.Contributions[0].CategoryID != "loans" || pen.Contributions[0].Amount != "108.00" {
 		t.Errorf("contributions = %+v, want 108.00 to Créditos", pen.Contributions)
@@ -80,7 +80,7 @@ func TestCurrencySummaryWithoutActivity(t *testing.T) {
 	var s PeriodCurrencySummary
 	decode(t, send(h, http.MethodGet, "/periods/2030-01/summary/ARS", ""), &s)
 	if s.Currency != "ARS" || s.Spent != "0.00" || s.Available != "0.00" || s.Income.Total != "0.00" ||
-		len(s.Categories) != 0 || s.Real != "" {
+		len(s.Expenses) != 0 || s.Real != "" {
 		t.Errorf("empty ARS summary = %+v", s)
 	}
 	assertProblem(t, send(h, http.MethodGet, "/periods/2030-01/summary/EUR", ""), http.StatusUnprocessableEntity)

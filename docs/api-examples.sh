@@ -92,7 +92,7 @@ section "Summary"
 "${CURL[@]}" "$API/periods/$P/summary" | jq '.currencies[] | {
   currency, income: .income.total, spent, available, real, difference, budgeted,
   contributions: [.contributions[] | "\(.name): \(.amount)"],
-  categories: [.categories[] | "\(.name): \(.spent)\(if .budget then " / \(.budget) (queda \(.remaining))" else "" end)"],
+  expenses: [.expenses[] | "\(.name): \(.spent)\(if .budget then " / \(.budget) (queda \(.remaining))" else "" end)"],
   tags: [.tags[] | "\(.tag): \(.spent)"],
   top_items: [.top_items[] | "\(.description): \(.spent)"]
 }'
@@ -103,7 +103,7 @@ section "Summary of one currency"
 section "Trends"
 "${CURL[@]}" "$API/trends?from=2026-06&to=$P&currency=PEN" | jq -c '{
   periods: [.periods[] | "\(.period): \(.spent)"],
-  categories: [.categories[] | "\(.name): total \(.total), average \(.average)"]
+  expenses: [.expenses[] | "\(.name): total \(.total), average \(.average)"]
 }'
 
 section "Planning: planned entries and the projected view"
