@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
@@ -62,7 +63,7 @@ func testData(t *testing.T) ([]income.Income, []expense.Expense, []balance.Balan
 
 func TestBuild(t *testing.T) {
 	incomes, expenses, balances := testData(t)
-	s := build(july, incomes, expenses, balances, catalog)
+	s := build(july, entries{incomes: incomes, expenses: expenses, balances: balances}, catalog)
 
 	if len(s.Currencies) != 2 || s.Currencies[0].Currency != money.PEN || s.Currencies[1].Currency != money.USD {
 		t.Fatalf("currencies = %v, want PEN then USD", s.Currencies)
@@ -150,14 +151,55 @@ func TestBuildTopItemsLimit(t *testing.T) {
 	for i := range 15 {
 		expenses = append(expenses, exp(t, "market", "1", money.PEN, string(rune('a'+i))))
 	}
-	s := build(july, nil, expenses, nil, catalog)
+	s := build(july, entries{expenses: expenses}, catalog)
 	if n := len(s.Currencies[0].TopItems); n != maxTopItems {
 		t.Errorf("top items = %d, want %d", n, maxTopItems)
 	}
 }
 
 func TestBuildEmptyPeriod(t *testing.T) {
-	if s := build(july, nil, nil, nil, catalog); len(s.Currencies) != 0 {
+	if s := build(july, entries{}, catalog); len(s.Currencies) != 0 {
 		t.Errorf("empty period: currencies = %v, want none", s.Currencies)
+	}
+}
+
+func TestBuildBudgets(t *testing.T) {
+	_, expenses, _ := testData(t)
+	budgets := []budget.Budget{
+		{CategoryID: "market", Amount: m(t, "80.00", money.PEN)},  // spent 97.50 → over budget
+		{CategoryID: "leisure", Amount: m(t, "30.00", money.PEN)}, // no PEN expenses yet
+		{CategoryID: "leisure", Amount: m(t, "50.00", money.USD)}, // spent 48.50
+	}
+	s := build(july, entries{expenses: expenses, budgets: budgets}, catalog)
+	pen, usd := s.Currencies[0], s.Currencies[1]
+
+	find := func(cs CurrencySummary, id string) CategoryTotal {
+		t.Helper()
+		for _, ct := range cs.Categories {
+			if ct.Category.ID == id {
+				return ct
+			}
+		}
+		t.Fatalf("category %s not in %s", id, cs.Currency)
+		return CategoryTotal{}
+	}
+
+	market := find(pen, "market")
+	if market.Budget == nil || market.Remaining == nil || market.Remaining.String() != "-17.50" {
+		t.Errorf("Mercado budget/remaining = %v/%v, want 80.00/-17.50", market.Budget, market.Remaining)
+	}
+	// A budgeted category shows up even without expenses.
+	if leisure := find(pen, "leisure"); leisure.Remaining == nil || leisure.Remaining.String() != "30.00" {
+		t.Errorf("Ocio PEN remaining = %v, want 30.00", leisure.Remaining)
+	}
+	if leisure := find(usd, "leisure"); leisure.Remaining == nil || leisure.Remaining.String() != "1.50" {
+		t.Errorf("Ocio USD remaining = %v, want 1.50", leisure.Remaining)
+	}
+	// Categories without a budget have none.
+	if ins := find(pen, "health-insurance"); ins.Budget != nil || ins.Remaining != nil {
+		t.Errorf("Seguro médico has no budget, got %v/%v", ins.Budget, ins.Remaining)
+	}
+	if pen.Budgeted == nil || pen.Budgeted.String() != "110.00" {
+		t.Errorf("PEN budgeted = %v, want 110.00", pen.Budgeted)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
@@ -40,6 +41,9 @@ type (
 	CategoryReader interface {
 		List(ctx context.Context, includeArchived bool) ([]category.Category, error)
 	}
+	BudgetReader interface {
+		ListByPeriod(ctx context.Context, p period.Period) ([]budget.Budget, error)
+	}
 )
 
 // Summary is the overview of a period, one block per currency with activity.
@@ -58,10 +62,11 @@ type CurrencySummary struct {
 	Tags       []TagTotal      // by amount spent, highest first
 	TopItems   []ItemTotal     // descriptions with the most money spent (exchanges excluded)
 
-	Committed     money.Money // spent in committed categories (must be paid every month)
-	Discretionary money.Money // spent in the other non-system categories
-	Exchanged     money.Money // spent in the system exchange category
-	Spent         money.Money // total spent
+	Committed     money.Money  // spent in committed categories (must be paid every month)
+	Discretionary money.Money  // spent in the other non-system categories
+	Exchanged     money.Money  // spent in the system exchange category
+	Spent         money.Money  // total spent
+	Budgeted      *money.Money // sum of the category budgets, if any
 
 	Available  money.Money  // income total − spent: what should be left
 	Real       *money.Money // real balance, if registered
@@ -81,7 +86,9 @@ type CategoryTotal struct {
 	Category    category.Category
 	Contributed money.Money // extra incomes contributed to the category
 	Spent       money.Money
-	Count       int // number of expenses
+	Count       int          // number of expenses
+	Budget      *money.Money // planned amount, if any
+	Remaining   *money.Money // budget − spent; negative when over budget
 }
 
 // GroupTotal is the money spent in a group of categories.
@@ -112,11 +119,13 @@ type Service struct {
 	expenses   ExpenseReader
 	balances   BalanceReader
 	categories CategoryReader
+	budgets    BudgetReader
 }
 
 // NewService returns a Service reading from the given repositories.
-func NewService(incomes IncomeReader, expenses ExpenseReader, balances BalanceReader, categories CategoryReader) *Service {
-	return &Service{incomes: incomes, expenses: expenses, balances: balances, categories: categories}
+func NewService(incomes IncomeReader, expenses ExpenseReader, balances BalanceReader,
+	categories CategoryReader, budgets BudgetReader) *Service {
+	return &Service{incomes: incomes, expenses: expenses, balances: balances, categories: categories, budgets: budgets}
 }
 
 // Get builds the summary of a period.
@@ -142,13 +151,24 @@ func (s *Service) Get(ctx context.Context, periodStr string) (Summary, error) {
 	if err != nil {
 		return Summary{}, fmt.Errorf("list categories: %w", err)
 	}
+	budgets, err := s.budgets.ListByPeriod(ctx, p)
+	if err != nil {
+		return Summary{}, fmt.Errorf("list budgets: %w", err)
+	}
 
-	return build(p, incomes, expenses, balances, catalog), nil
+	return build(p, entries{incomes, expenses, balances, budgets}, catalog), nil
+}
+
+// entries groups what was registered in a period.
+type entries struct {
+	incomes  []income.Income
+	expenses []expense.Expense
+	balances []balance.Balance
+	budgets  []budget.Budget
 }
 
 // build is pure: it only computes, which keeps it easy to test.
-func build(p period.Period, incomes []income.Income, expenses []expense.Expense,
-	balances []balance.Balance, catalog []category.Category) Summary {
+func build(p period.Period, e entries, catalog []category.Category) Summary {
 
 	categories := make(map[string]category.Category, len(catalog))
 	for _, c := range catalog {
@@ -163,14 +183,17 @@ func build(p period.Period, incomes []income.Income, expenses []expense.Expense,
 		return builders[c]
 	}
 
-	for _, in := range incomes {
+	for _, in := range e.incomes {
 		get(in.Amount.Currency()).addIncome(in)
 	}
-	for _, e := range expenses {
-		get(e.Amount.Currency()).addExpense(e)
+	for _, ex := range e.expenses {
+		get(ex.Amount.Currency()).addExpense(ex)
 	}
-	for _, b := range balances {
+	for _, b := range e.balances {
 		get(b.Amount.Currency()).setReal(b.Amount)
+	}
+	for _, b := range e.budgets {
+		get(b.Amount.Currency()).setBudget(b)
 	}
 
 	out := Summary{Period: p}
@@ -277,6 +300,11 @@ func (b *builder) setReal(m money.Money) {
 	b.real = &m
 }
 
+func (b *builder) setBudget(bud budget.Budget) {
+	amount := bud.Amount
+	b.category(bud.CategoryID).Budget = &amount
+}
+
 // category returns the running total of a category, creating it on first use.
 func (b *builder) category(id string) *CategoryTotal {
 	ct := b.byCategory[id]
@@ -309,6 +337,15 @@ func (b *builder) result() CurrencySummary {
 	}
 
 	for _, ct := range b.byCategory {
+		if ct.Budget != nil {
+			remaining := sub(*ct.Budget, ct.Spent)
+			ct.Remaining = &remaining
+			total := *ct.Budget
+			if cs.Budgeted != nil {
+				total = add(*cs.Budgeted, total)
+			}
+			cs.Budgeted = &total
+		}
 		cs.Categories = append(cs.Categories, *ct)
 	}
 	slices.SortFunc(cs.Categories, func(x, y CategoryTotal) int {

@@ -15,6 +15,14 @@ type Balance struct {
 	UpdatedAt   string
 }
 
+type Budget struct {
+	Period      string
+	CategoryID  string
+	Currency    string
+	AmountMinor int64
+	UpdatedAt   string
+}
+
 type Category struct {
 	ID         string
 	Name       string

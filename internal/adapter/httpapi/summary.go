@@ -39,6 +39,7 @@ type CurrencySummary struct {
 	Discretionary string          `json:"discretionary" doc:"Spent in the other non-system categories."`
 	Exchanged     string          `json:"exchanged" doc:"Spent in the system category Cambio."`
 	Spent         string          `json:"spent"`
+	Budgeted      string          `json:"budgeted,omitempty" doc:"Sum of the category budgets, if any."`
 	Available     string          `json:"available" doc:"Income total minus spent: the money that should be left."`
 	Real          string          `json:"real,omitempty" doc:"Real balance, if registered."`
 	Difference    string          `json:"difference,omitempty" doc:"available − real. 0 means every entry is registered; negative: more money than registered; positive: an expense is missing."`
@@ -53,6 +54,8 @@ type CategoryTotal struct {
 	Contributed string `json:"contributed" doc:"Extra incomes contributed to the category."`
 	Spent       string `json:"spent"`
 	Count       int    `json:"count" doc:"Number of expenses."`
+	Budget      string `json:"budget,omitempty" doc:"Planned amount, if the category has a budget."`
+	Remaining   string `json:"remaining,omitempty" doc:"budget − spent; negative when over budget."`
 }
 
 // GroupTotal is the money spent in a group.
@@ -97,6 +100,7 @@ func toSummary(s summary.Summary) Summary {
 			Discretionary: c.Discretionary.String(),
 			Exchanged:     c.Exchanged.String(),
 			Spent:         c.Spent.String(),
+			Budgeted:      optional(c.Budgeted),
 			Available:     c.Available.String(),
 			Real:          optional(c.Real),
 			Difference:    optional(c.Difference),
@@ -115,6 +119,8 @@ func toSummary(s summary.Summary) Summary {
 				Contributed: ct.Contributed.String(),
 				Spent:       ct.Spent.String(),
 				Count:       ct.Count,
+				Budget:      optional(ct.Budget),
+				Remaining:   optional(ct.Remaining),
 			})
 		}
 		for _, g := range c.Groups {

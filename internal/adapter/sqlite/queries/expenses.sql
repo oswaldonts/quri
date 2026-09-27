@@ -8,10 +8,11 @@ FROM expenses
 WHERE period = ?
 ORDER BY spent_on, created_at;
 
--- Expenses or contributions (extra incomes assigned to the category) in the period.
+-- Expenses, contributions (extra incomes assigned to the category) or budgets in the period.
 -- name: CategoryHasEntries :one
 SELECT EXISTS (SELECT 1 FROM expenses WHERE expenses.period = sqlc.arg(period) AND expenses.category_id = sqlc.arg(category_id))
     OR EXISTS (SELECT 1 FROM incomes WHERE incomes.period = sqlc.arg(period) AND incomes.category_id = sqlc.arg(category_id))
+    OR EXISTS (SELECT 1 FROM budgets WHERE budgets.period = sqlc.arg(period) AND budgets.category_id = sqlc.arg(category_id))
     AS has_entries;
 
 -- name: InsertExpenseTag :exec

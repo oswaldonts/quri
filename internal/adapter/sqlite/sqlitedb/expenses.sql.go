@@ -13,6 +13,7 @@ import (
 const categoryHasEntries = `-- name: CategoryHasEntries :one
 SELECT EXISTS (SELECT 1 FROM expenses WHERE expenses.period = ?1 AND expenses.category_id = ?2)
     OR EXISTS (SELECT 1 FROM incomes WHERE incomes.period = ?1 AND incomes.category_id = ?2)
+    OR EXISTS (SELECT 1 FROM budgets WHERE budgets.period = ?1 AND budgets.category_id = ?2)
     AS has_entries
 `
 
@@ -21,7 +22,7 @@ type CategoryHasEntriesParams struct {
 	CategoryID string
 }
 
-// Expenses or contributions (extra incomes assigned to the category) in the period.
+// Expenses, contributions (extra incomes assigned to the category) or budgets in the period.
 func (q *Queries) CategoryHasEntries(ctx context.Context, arg CategoryHasEntriesParams) (sql.NullBool, error) {
 	row := q.db.QueryRowContext(ctx, categoryHasEntries, arg.Period, arg.CategoryID)
 	var has_entries sql.NullBool

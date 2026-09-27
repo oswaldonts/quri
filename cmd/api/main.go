@@ -13,6 +13,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
@@ -51,7 +52,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	incomeService := income.NewService(incomeRepo, categoryService)
 	balanceService := balance.NewService(balanceRepo)
 	expenseService := expense.NewService(expenseRepo, categoryService)
-	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo)
+	budgetRepo := sqlite.NewBudgetRepository(db)
+	budgetService := budget.NewService(budgetRepo, categoryService)
+	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo)
 	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService)
 
 	addr := ":" + getenv("PORT", "8080")
@@ -63,6 +66,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			Expenses:   expenseService,
 			Balances:   balanceService,
 			Summaries:  summaryService,
+			Budgets:    budgetService,
 			Rates:      exchangeService,
 			Exchanges:  exchangeService,
 		}),
