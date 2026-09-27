@@ -23,7 +23,7 @@ func (q *Queries) DeleteIncome(ctx context.Context, id string) (int64, error) {
 }
 
 const getIncome = `-- name: GetIncome :one
-SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id
+SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id, status
 FROM incomes
 WHERE id = ?
 `
@@ -41,13 +41,14 @@ func (q *Queries) GetIncome(ctx context.Context, id string) (Income, error) {
 		&i.ReceivedOn,
 		&i.CreatedAt,
 		&i.CategoryID,
+		&i.Status,
 	)
 	return i, err
 }
 
 const insertIncome = `-- name: InsertIncome :exec
-INSERT INTO incomes (id, period, currency, amount_minor, kind, description, received_on, created_at, category_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO incomes (id, period, currency, amount_minor, kind, description, received_on, created_at, category_id, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertIncomeParams struct {
@@ -60,6 +61,7 @@ type InsertIncomeParams struct {
 	ReceivedOn  string
 	CreatedAt   string
 	CategoryID  sql.NullString
+	Status      string
 }
 
 func (q *Queries) InsertIncome(ctx context.Context, arg InsertIncomeParams) error {
@@ -73,12 +75,13 @@ func (q *Queries) InsertIncome(ctx context.Context, arg InsertIncomeParams) erro
 		arg.ReceivedOn,
 		arg.CreatedAt,
 		arg.CategoryID,
+		arg.Status,
 	)
 	return err
 }
 
 const listIncomesByPeriod = `-- name: ListIncomesByPeriod :many
-SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id
+SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id, status
 FROM incomes
 WHERE period = ?
 ORDER BY received_on, created_at
@@ -103,6 +106,7 @@ func (q *Queries) ListIncomesByPeriod(ctx context.Context, period string) ([]Inc
 			&i.ReceivedOn,
 			&i.CreatedAt,
 			&i.CategoryID,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -119,7 +123,7 @@ func (q *Queries) ListIncomesByPeriod(ctx context.Context, period string) ([]Inc
 
 const updateIncome = `-- name: UpdateIncome :execrows
 UPDATE incomes
-SET currency = ?, amount_minor = ?, kind = ?, description = ?, received_on = ?, category_id = ?
+SET currency = ?, amount_minor = ?, kind = ?, description = ?, received_on = ?, category_id = ?, status = ?
 WHERE id = ?
 `
 
@@ -130,6 +134,7 @@ type UpdateIncomeParams struct {
 	Description string
 	ReceivedOn  string
 	CategoryID  sql.NullString
+	Status      string
 	ID          string
 }
 
@@ -141,6 +146,7 @@ func (q *Queries) UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (int
 		arg.Description,
 		arg.ReceivedOn,
 		arg.CategoryID,
+		arg.Status,
 		arg.ID,
 	)
 	if err != nil {

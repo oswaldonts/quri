@@ -15,6 +15,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 var (
@@ -42,7 +43,8 @@ type Expense struct {
 	Description string
 	Tags        []string // normalized (lowercase, trimmed), unique and sorted
 	SpentOn     time.Time
-	ExchangeID  string // set when the expense is the source side of a currency exchange
+	ExchangeID  string        // set when the expense is the source side of a currency exchange
+	Status      status.Status // planned or confirmed
 	CreatedAt   time.Time
 }
 
@@ -88,6 +90,7 @@ type RegisterInput struct {
 	Description string   // optional, up to 200 characters
 	Tags        []string // optional kinds of expense, e.g. "dulces"; normalized by NormalizeTags
 	SpentOn     string   // YYYY-MM-DD
+	Status      string   // "planned" or "confirmed" (default)
 }
 
 // Register validates the input and stores a new expense.
@@ -114,6 +117,7 @@ type UpdateInput struct {
 	Description *string
 	Tags        *[]string
 	SpentOn     *string
+	Status      *string
 }
 
 // Update changes an expense of the period, validating the result like Register.
@@ -131,6 +135,7 @@ func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInp
 		Description: current.Description,
 		Tags:        current.Tags,
 		SpentOn:     current.SpentOn.Format(time.DateOnly),
+		Status:      string(current.Status),
 	}
 	apply(&merged.CategoryID, in.CategoryID)
 	apply(&merged.Currency, in.Currency)
@@ -138,6 +143,7 @@ func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInp
 	apply(&merged.Description, in.Description)
 	apply(&merged.SpentOn, in.SpentOn)
 	apply(&merged.Tags, in.Tags)
+	apply(&merged.Status, in.Status)
 
 	updated, err := s.parse(merged)
 	if err != nil {
@@ -197,6 +203,7 @@ type BatchInput struct {
 	Currency   string
 	SpentOn    string
 	Tags       []string
+	Status     string
 	Items      []BatchItem
 }
 
@@ -208,6 +215,7 @@ type BatchItem struct {
 	Currency    string
 	SpentOn     string
 	Tags        []string
+	Status      string
 }
 
 // maxBatchItems bounds the size of a batch.
@@ -233,6 +241,7 @@ func (s *Service) RegisterBatch(ctx context.Context, in BatchInput) ([]Expense, 
 			Description: item.Description,
 			Tags:        append(slices.Clone(in.Tags), item.Tags...),
 			SpentOn:     cmp.Or(item.SpentOn, in.SpentOn),
+			Status:      cmp.Or(item.Status, in.Status),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("item %d: %w", i+1, err)
@@ -281,7 +290,12 @@ func (s *Service) parse(in RegisterInput) (Expense, error) {
 	if err != nil {
 		return Expense{}, invalid(err)
 	}
+	st, err := status.Parse(in.Status)
+	if err != nil {
+		return Expense{}, invalid(err)
+	}
 	return Expense{
+		Status:      st,
 		ID:          s.newID(),
 		Period:      p,
 		CategoryID:  strings.TrimSpace(in.CategoryID),
@@ -312,6 +326,7 @@ func (s *Service) checkCategory(ctx context.Context, e Expense) error {
 // Filter narrows a listing; empty fields don't filter.
 type Filter struct {
 	CategoryID string
+	Status     string // "planned" or "confirmed"; empty lists both
 	Tag        string // compared after normalization, so "#Dulces" matches "dulces"
 }
 
@@ -320,6 +335,12 @@ func (s *Service) List(ctx context.Context, periodStr string, f Filter) ([]Expen
 	p, err := period.Parse(periodStr)
 	if err != nil {
 		return nil, invalid(err)
+	}
+	var st status.Status
+	if f.Status != "" {
+		if st, err = status.Parse(f.Status); err != nil {
+			return nil, invalid(err)
+		}
 	}
 	var tag string
 	if strings.TrimSpace(f.Tag) != "" {
@@ -337,7 +358,8 @@ func (s *Service) List(ctx context.Context, periodStr string, f Filter) ([]Expen
 	// A month holds at most a few hundred expenses: filtering in memory is simple and fast enough.
 	return slices.DeleteFunc(all, func(e Expense) bool {
 		return (f.CategoryID != "" && e.CategoryID != f.CategoryID) ||
-			(tag != "" && !slices.Contains(e.Tags, tag))
+			(tag != "" && !slices.Contains(e.Tags, tag)) ||
+			(st != "" && e.Status != st)
 	}), nil
 }
 

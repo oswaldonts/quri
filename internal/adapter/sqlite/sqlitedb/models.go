@@ -45,6 +45,7 @@ type Exchange struct {
 	ExchangedOn     string
 	IncomeID        string
 	CreatedAt       string
+	Status          string
 }
 
 type Expense struct {
@@ -57,6 +58,7 @@ type Expense struct {
 	SpentOn     string
 	ExchangeID  sql.NullString
 	CreatedAt   string
+	Status      string
 }
 
 type ExpenseTag struct {
@@ -74,6 +76,7 @@ type Income struct {
 	ReceivedOn  string
 	CreatedAt   string
 	CategoryID  sql.NullString
+	Status      string
 }
 
 type PeriodCategory struct {

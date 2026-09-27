@@ -24,22 +24,22 @@ type Available struct {
 
 // Available returns, per currency, how much money is left in a period. It is the
 // lightweight version of Get: it only reads incomes and expenses.
-func (s *Service) Available(ctx context.Context, periodStr string) ([]Available, error) {
+func (s *Service) Available(ctx context.Context, periodStr, viewStr string) ([]Available, error) {
 	p, err := period.Parse(periodStr)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
-	carry, err := s.carryInto(ctx, p)
+	view, err := ParseView(viewStr)
 	if err != nil {
 		return nil, err
 	}
-	incomes, err := s.incomes.ListByPeriod(ctx, p)
+	carry, err := s.carryInto(ctx, p, view)
 	if err != nil {
-		return nil, fmt.Errorf("list incomes: %w", err)
+		return nil, err
 	}
-	expenses, err := s.expenses.ListByPeriod(ctx, p)
+	incomes, expenses, _, err := s.movements(ctx, p, view)
 	if err != nil {
-		return nil, fmt.Errorf("list expenses: %w", err)
+		return nil, err
 	}
 	return buildAvailable(incomes, expenses, carry), nil
 }

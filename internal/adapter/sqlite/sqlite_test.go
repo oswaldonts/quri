@@ -13,6 +13,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 // openTestDB creates a fresh database file in a temporary directory,
@@ -56,6 +57,7 @@ func testIncome(t *testing.T, id string) income.Income {
 		Period:     july,
 		Amount:     mustMoney(t, "1330.00", money.USD),
 		Kind:       income.KindSalary,
+		Status:     status.Confirmed,
 		ReceivedOn: now,
 		CreatedAt:  now,
 	}

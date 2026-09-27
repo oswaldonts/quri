@@ -29,6 +29,7 @@ type UpdateExpenseInput struct {
 		Description *string       `json:"description,omitempty" maxLength:"200"`
 		Tags        *[]string     `json:"tags,omitempty" maxItems:"10" doc:"Replaces all the tags; an empty list removes them."`
 		SpentOn     *string       `json:"spent_on,omitempty" format:"date"`
+		Status      *string       `json:"status,omitempty" enum:"planned,confirmed" doc:"Set confirmed when a planned entry happens; amount and date can be corrected in the same request."`
 	}
 }
 
@@ -40,6 +41,7 @@ type RegisterBatchInput struct {
 		Currency   CurrencyCode `json:"currency,omitempty" doc:"Common currency, used by items without their own."`
 		SpentOn    string       `json:"spent_on,omitempty" format:"date" example:"2026-08-03" doc:"Common date, used by items without their own."`
 		Tags       []string     `json:"tags,omitempty" maxItems:"10" doc:"Added to the tags of every item."`
+		Status     string       `json:"status,omitempty" enum:"planned,confirmed" doc:"planned: expected, not happened yet (only counts in view=projected). confirmed (default): happened."`
 		Items      []BatchItem  `json:"items" minItems:"1" maxItems:"100"`
 	}
 }
@@ -52,6 +54,7 @@ type BatchItem struct {
 	Currency    CurrencyCode `json:"currency,omitempty"`
 	SpentOn     string       `json:"spent_on,omitempty" format:"date"`
 	Tags        []string     `json:"tags,omitempty" maxItems:"10" example:"[\"dulces\"]"`
+	Status      string       `json:"status,omitempty" enum:"planned,confirmed" doc:"Overrides the common status for this item."`
 }
 
 // ListExpensesInput is the request of GET /periods/{period}/expenses.
@@ -59,6 +62,7 @@ type ListExpensesInput struct {
 	PeriodParam
 	CategoryID string `query:"category_id" example:"market" doc:"Only expenses of this category."`
 	Tag        string `query:"tag" example:"dulces" doc:"Only expenses with this tag."`
+	Status     string `query:"status" enum:"planned,confirmed" doc:"Only planned or only confirmed expenses."`
 }
 
 // RegisterExpenseInput is the request of POST /periods/{period}/expenses.
@@ -70,6 +74,7 @@ type RegisterExpenseInput struct {
 		Amount      string       `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"45.50" doc:"Decimal string with up to 2 decimal places."`
 		Description string       `json:"description,omitempty" maxLength:"200" example:"Chocolate Milky"`
 		Tags        []string     `json:"tags,omitempty" maxItems:"10" example:"[\"dulces\"]" doc:"Kinds of expense, e.g. dulces or lácteos. Normalized to lowercase; a leading # is dropped."`
+		Status      string       `json:"status,omitempty" enum:"planned,confirmed" doc:"planned: expected, not happened yet (only counts in view=projected). confirmed (default): happened."`
 		SpentOn     string       `json:"spent_on" format:"date" example:"2026-08-03"`
 	}
 }
@@ -83,6 +88,7 @@ type Expense struct {
 	Amount      string    `json:"amount" example:"45.50"`
 	Description string    `json:"description"`
 	Tags        []string  `json:"tags"`
+	Status      string    `json:"status" enum:"planned,confirmed"`
 	SpentOn     string    `json:"spent_on" format:"date" example:"2026-08-03"`
 	ExchangeID  string    `json:"exchange_id,omitempty" doc:"Set when the expense is the source side of an exchange."`
 	CreatedAt   time.Time `json:"created_at"`
@@ -97,6 +103,7 @@ func toExpense(e expense.Expense) Expense {
 		Amount:      e.Amount.String(),
 		Description: e.Description,
 		Tags:        append([]string{}, e.Tags...), // never null in JSON
+		Status:      string(e.Status),
 		SpentOn:     e.SpentOn.Format(time.DateOnly),
 		ExchangeID:  e.ExchangeID,
 		CreatedAt:   e.CreatedAt,
@@ -133,6 +140,7 @@ func registerExpenses(api huma.API, expenses ExpenseService) {
 			Description: in.Body.Description,
 			Tags:        in.Body.Tags,
 			SpentOn:     in.Body.SpentOn,
+			Status:      in.Body.Status,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "register expense", err)
@@ -149,7 +157,7 @@ func registerExpenses(api huma.API, expenses ExpenseService) {
 		Tags:        []string{tagExpenses},
 		Errors:      []int{http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, in *ListExpensesInput) (*ExpenseListOutput, error) {
-		es, err := expenses.List(ctx, in.Period, expense.Filter{CategoryID: in.CategoryID, Tag: in.Tag})
+		es, err := expenses.List(ctx, in.Period, expense.Filter{CategoryID: in.CategoryID, Tag: in.Tag, Status: in.Status})
 		if err != nil {
 			return nil, toHTTPError(ctx, "list expenses", err)
 		}
@@ -183,6 +191,7 @@ func registerExpenseBatch(api huma.API, expenses ExpenseService) {
 				Currency:    string(it.Currency),
 				SpentOn:     it.SpentOn,
 				Tags:        it.Tags,
+				Status:      it.Status,
 			})
 		}
 		es, err := expenses.RegisterBatch(ctx, expense.BatchInput{
@@ -191,6 +200,7 @@ func registerExpenseBatch(api huma.API, expenses ExpenseService) {
 			Currency:   string(in.Body.Currency),
 			SpentOn:    in.Body.SpentOn,
 			Tags:       in.Body.Tags,
+			Status:     in.Body.Status,
 			Items:      items,
 		})
 		if err != nil {
@@ -222,6 +232,7 @@ func registerExpenseEdits(api huma.API, expenses ExpenseService) {
 			Description: in.Body.Description,
 			Tags:        in.Body.Tags,
 			SpentOn:     in.Body.SpentOn,
+			Status:      in.Body.Status,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "update expense", err)

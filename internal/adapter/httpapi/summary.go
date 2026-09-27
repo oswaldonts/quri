@@ -13,10 +13,10 @@ import (
 
 // SummaryService is what the HTTP layer needs to build period summaries.
 type SummaryService interface {
-	Get(ctx context.Context, period string) (summary.Summary, error)
-	GetCurrency(ctx context.Context, period, currency string) (period.Period, summary.CurrencySummary, error)
+	Get(ctx context.Context, period, view string) (summary.Summary, error)
+	GetCurrency(ctx context.Context, period, currency, view string) (period.Period, summary.CurrencySummary, error)
 	Trends(ctx context.Context, in summary.TrendsInput) (summary.Trends, error)
-	Available(ctx context.Context, period string) ([]summary.Available, error)
+	Available(ctx context.Context, period, view string) ([]summary.Available, error)
 }
 
 // Summary is the overview of a period.
@@ -176,6 +176,13 @@ type PeriodCurrencySummary struct {
 type CurrencySummaryInput struct {
 	PeriodParam
 	Currency CurrencyCode `path:"currency"`
+	View     string       `query:"view" enum:"confirmed,projected" doc:"confirmed (default): only what happened. projected: also planned entries."`
+}
+
+// PeriodViewInput is a period with the view of the computation.
+type PeriodViewInput struct {
+	PeriodParam
+	View string `query:"view" enum:"confirmed,projected" doc:"confirmed (default): only what happened. projected: also planned entries."`
 }
 
 // CurrencySummaryOutput wraps PeriodCurrencySummary as the response body.
@@ -202,7 +209,7 @@ func registerSummary(api huma.API, summaries SummaryService) {
 		Tags:   []string{tagSummary},
 		Errors: []int{http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, in *CurrencySummaryInput) (*CurrencySummaryOutput, error) {
-		p, cs, err := summaries.GetCurrency(ctx, in.Period, string(in.Currency))
+		p, cs, err := summaries.GetCurrency(ctx, in.Period, string(in.Currency), in.View)
 		if err != nil {
 			return nil, toHTTPError(ctx, "get currency summary", err)
 		}
@@ -222,8 +229,8 @@ func registerSummary(api huma.API, summaries SummaryService) {
 			"items, the available money (income − spent) and its difference with the real balance.",
 		Tags:   []string{tagSummary},
 		Errors: []int{http.StatusUnprocessableEntity},
-	}, func(ctx context.Context, in *PeriodParam) (*SummaryOutput, error) {
-		s, err := summaries.Get(ctx, in.Period)
+	}, func(ctx context.Context, in *PeriodViewInput) (*SummaryOutput, error) {
+		s, err := summaries.Get(ctx, in.Period, in.View)
 		if err != nil {
 			return nil, toHTTPError(ctx, "get summary", err)
 		}
@@ -236,6 +243,7 @@ type TrendsInput struct {
 	From     string       `query:"from" required:"true" pattern:"^[0-9]{4}-(0[1-9]|1[0-2])$" example:"2026-01" doc:"First period, included."`
 	To       string       `query:"to" required:"true" pattern:"^[0-9]{4}-(0[1-9]|1[0-2])$" example:"2026-06" doc:"Last period, included (at most 24 months)."`
 	Currency CurrencyCode `query:"currency" required:"true"`
+	View     string       `query:"view" enum:"confirmed,projected" doc:"confirmed (default): only what happened. projected: also planned entries."`
 }
 
 // Trends compares several consecutive periods in one currency.
@@ -328,7 +336,7 @@ func registerTrends(api huma.API, summaries SummaryService) {
 		Tags:   []string{tagSummary},
 		Errors: []int{http.StatusUnprocessableEntity},
 	}, func(ctx context.Context, in *TrendsInput) (*TrendsOutput, error) {
-		t, err := summaries.Trends(ctx, summary.TrendsInput{From: in.From, To: in.To, Currency: string(in.Currency)})
+		t, err := summaries.Trends(ctx, summary.TrendsInput{From: in.From, To: in.To, Currency: string(in.Currency), View: in.View})
 		if err != nil {
 			return nil, toHTTPError(ctx, "get trends", err)
 		}
@@ -362,8 +370,8 @@ func registerAvailable(api huma.API, summaries SummaryService) {
 			"the summary has the same figure plus the detail by category, tag and item.",
 		Tags:   []string{tagSummary},
 		Errors: []int{http.StatusUnprocessableEntity},
-	}, func(ctx context.Context, in *PeriodParam) (*AvailableOutput, error) {
-		as, err := summaries.Available(ctx, in.Period)
+	}, func(ctx context.Context, in *PeriodViewInput) (*AvailableOutput, error) {
+		as, err := summaries.Available(ctx, in.Period, in.View)
 		if err != nil {
 			return nil, toHTTPError(ctx, "get available", err)
 		}

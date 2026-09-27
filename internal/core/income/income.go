@@ -8,6 +8,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 var (
@@ -53,6 +54,7 @@ type Income struct {
 	// CategoryID is optional and only for KindExtra: the category the extra money
 	// is contributed to (an "aporte"), e.g. an exchange gain assigned to Créditos.
 	CategoryID  string
+	Status      status.Status // planned or confirmed
 	Description string
 	ReceivedOn  time.Time
 	CreatedAt   time.Time

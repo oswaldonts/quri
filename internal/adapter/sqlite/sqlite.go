@@ -15,6 +15,8 @@ import (
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // pure Go driver (no CGO), registered as "sqlite"
+
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 //go:embed migrations/*.sql
@@ -58,6 +60,15 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
 	return nil
+}
+
+// storedStatus writes an entry's status; an empty status is stored as confirmed,
+// the same default the core applies.
+func storedStatus(s status.Status) string {
+	if s == "" {
+		return string(status.Confirmed)
+	}
+	return string(s)
 }
 
 // Timestamps are stored as RFC 3339 text in UTC.

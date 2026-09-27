@@ -12,6 +12,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 var (
@@ -43,6 +44,7 @@ type Exchange struct {
 	Rate        money.Rate
 	Description string
 	ExchangedOn time.Time
-	IncomeID    string // income created in the target currency
+	IncomeID    string        // income created in the target currency
+	Status      status.Status // planned or confirmed; shared by its income and expense
 	CreatedAt   time.Time
 }

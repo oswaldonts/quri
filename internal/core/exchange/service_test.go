@@ -12,6 +12,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 // Fakes: minimal in-test implementations of the ports.
@@ -74,6 +75,18 @@ func (f *fakeExchanges) ListByPeriod(_ context.Context, p period.Period) ([]Exch
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeExchanges) Update(_ context.Context, e Exchange, in income.Income, out expense.Expense) error {
+	for i := range f.saved {
+		if f.saved[i].ID == e.ID {
+			f.saved[i], f.incomes[i] = e, in
+			out.ID = f.expenses[i].ID
+			f.expenses[i] = out
+			return nil
+		}
+	}
+	return ErrNotFound
 }
 
 func (f *fakeExchanges) Delete(_ context.Context, e Exchange) error {
@@ -349,3 +362,45 @@ func TestDeleteRate(t *testing.T) {
 		t.Errorf("bad period: err = %v, want %v", err, ErrInvalidInput)
 	}
 }
+
+func TestPlannedExchangeConfirmed(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture()
+	f.setRate(t, "3.25")
+
+	ex, err := f.svc.Register(ctx, RegisterInput{PairInput: usdPen, Amount: "1100", ExchangedOn: "2026-08-01", Status: "planned"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ex.Status != status.Planned || f.exchanges.incomes[0].Status != status.Planned || f.exchanges.expenses[0].Status != status.Planned {
+		t.Fatalf("planned exchange must plan its income and expense too")
+	}
+
+	// It finally happened with 1200 USD, a week later: the rate stays 3.25.
+	got, err := f.svc.Update(ctx, "2026-07", ex.ID, UpdateInput{Status: ptr("confirmed"), Amount: ptr("1200"), ExchangedOn: ptr("2026-08-08")})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got.Status != status.Confirmed || got.From.String() != "1200.00" || got.To.String() != "3900.00" || got.Rate.String() != "3.25" {
+		t.Errorf("confirmed exchange = %+v", got)
+	}
+	inc, out := f.exchanges.incomes[0], f.exchanges.expenses[0]
+	if inc.Status != status.Confirmed || inc.Amount.String() != "3900.00" || inc.ReceivedOn.Format("2006-01-02") != "2026-08-08" {
+		t.Errorf("income = %+v, want confirmed 3900.00 on 2026-08-08", inc)
+	}
+	if out.Status != status.Confirmed || out.Amount.String() != "1200.00" {
+		t.Errorf("expense = %+v, want confirmed 1200.00", out)
+	}
+
+	if _, err := f.svc.Update(ctx, "2026-08", ex.ID, UpdateInput{}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("other period: err = %v, want %v", err, ErrNotFound)
+	}
+	if _, err := f.svc.Update(ctx, "2026-07", ex.ID, UpdateInput{Amount: ptr("0")}); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("zero amount: err = %v, want %v", err, ErrInvalidInput)
+	}
+	if _, err := f.svc.Update(ctx, "2026-07", ex.ID, UpdateInput{Status: ptr("pending")}); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("bad status: err = %v, want %v", err, ErrInvalidInput)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }

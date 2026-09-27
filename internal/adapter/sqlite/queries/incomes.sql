@@ -1,21 +1,21 @@
 -- name: InsertIncome :exec
-INSERT INTO incomes (id, period, currency, amount_minor, kind, description, received_on, created_at, category_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO incomes (id, period, currency, amount_minor, kind, description, received_on, created_at, category_id, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListIncomesByPeriod :many
-SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id
+SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id, status
 FROM incomes
 WHERE period = ?
 ORDER BY received_on, created_at;
 
 -- name: GetIncome :one
-SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id
+SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id, status
 FROM incomes
 WHERE id = ?;
 
 -- name: UpdateIncome :execrows
 UPDATE incomes
-SET currency = ?, amount_minor = ?, kind = ?, description = ?, received_on = ?, category_id = ?
+SET currency = ?, amount_minor = ?, kind = ?, description = ?, received_on = ?, category_id = ?, status = ?
 WHERE id = ?;
 
 -- name: DeleteIncome :execrows

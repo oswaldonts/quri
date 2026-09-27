@@ -10,6 +10,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 // fakeRepo records saved incomes and can be told to fail.
@@ -190,11 +191,11 @@ func TestRegisterContribution(t *testing.T) {
 		t.Errorf("got kind %q category %q, want extra contributed to loans", got.Kind, got.CategoryID)
 	}
 
-	list, err := newTestService(repo).List(context.Background(), "2026-07")
+	list, err := newTestService(repo).List(context.Background(), "2026-07", "")
 	if err != nil || len(list) != 1 || list[0].CategoryID != "loans" {
 		t.Errorf("List = %+v, %v", list, err)
 	}
-	if _, err := newTestService(repo).List(context.Background(), "julio"); !errors.Is(err, ErrInvalidInput) {
+	if _, err := newTestService(repo).List(context.Background(), "julio", ""); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("List bad period: err = %v, want %v", err, ErrInvalidInput)
 	}
 }
@@ -271,4 +272,50 @@ func mustPeriod(t *testing.T, s string) period.Period {
 		t.Fatal(err)
 	}
 	return p
+}
+
+func TestStatus(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeRepo{}
+	svc := newTestService(repo)
+
+	in := validInput()
+	in.Status = "planned"
+	planned, err := svc.Register(ctx, in)
+	if err != nil || planned.Status != status.Planned {
+		t.Fatalf("Register planned = %q, %v", planned.Status, err)
+	}
+	// Confirming can also correct the amount.
+	got, err := svc.Update(ctx, "2026-07", planned.ID, UpdateInput{Status: ptr("confirmed"), Amount: ptr("1340.00")})
+	if err != nil || got.Status != status.Confirmed || got.Amount.String() != "1340.00" {
+		t.Errorf("confirm = %+v, %v", got, err)
+	}
+
+	// Default is confirmed; an unknown status is invalid.
+	if def, _ := svc.Register(ctx, validInput()); def.Status != status.Confirmed {
+		t.Errorf("default status = %q, want confirmed", def.Status)
+	}
+	bad := validInput()
+	bad.Status = "pending"
+	if _, err := svc.Register(ctx, bad); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("unknown status: err = %v, want %v", err, ErrInvalidInput)
+	}
+}
+
+func TestListStatusFilter(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(&fakeRepo{})
+	planned := validInput()
+	planned.Status = "planned"
+	_, _ = svc.Register(ctx, planned)
+	_, _ = svc.Register(ctx, validInput())
+
+	for filter, want := range map[string]int{"": 2, "planned": 1, "confirmed": 1} {
+		if got, err := svc.List(ctx, "2026-07", filter); err != nil || len(got) != want {
+			t.Errorf("List(%q) = %d, %v; want %d", filter, len(got), err, want)
+		}
+	}
+	if _, err := svc.List(ctx, "2026-07", "pending"); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("bad filter: err = %v, want %v", err, ErrInvalidInput)
+	}
 }

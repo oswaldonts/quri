@@ -14,6 +14,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 const maxDescriptionLength = 200
@@ -39,6 +40,8 @@ type Repository interface {
 	ListByPeriod(ctx context.Context, p period.Period) ([]Exchange, error)
 	// Delete removes the exchange with its income and expense, atomically.
 	Delete(ctx context.Context, e Exchange) error
+	// Update replaces the exchange, its income (by ID) and its expense (by exchange ID), atomically.
+	Update(ctx context.Context, e Exchange, in income.Income, out expense.Expense) error
 }
 
 // Service holds the rate and exchange use cases.
@@ -125,6 +128,7 @@ type RegisterInput struct {
 	Amount      string // amount spent in the source currency, e.g. "1096.00"
 	Description string // optional, up to 200 characters
 	ExchangedOn string // YYYY-MM-DD
+	Status      string // "planned" or "confirmed" (default)
 }
 
 // Register converts Amount with the period rate and stores, in one transaction, the
@@ -154,6 +158,11 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, err
 		return Exchange{}, invalid(fmt.Errorf("exchanged_on %q (want YYYY-MM-DD)", in.ExchangedOn))
 	}
 
+	st, err := status.Parse(in.Status)
+	if err != nil {
+		return Exchange{}, invalid(err)
+	}
+
 	pr, err := s.findRate(ctx, p, from, to)
 	if err != nil {
 		return Exchange{}, err
@@ -172,16 +181,6 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, err
 		return Exchange{}, fmt.Errorf("exchange category: %w", err)
 	}
 
-	now := s.now().UTC()
-	inc := income.Income{
-		ID:          s.newID(),
-		Period:      p,
-		Amount:      converted,
-		Kind:        income.KindExchange,
-		Description: fmt.Sprintf("Exchange %s %s at %s", amount, from, pr.Rate),
-		ReceivedOn:  exchangedOn,
-		CreatedAt:   now,
-	}
 	ex := Exchange{
 		ID:          s.newID(),
 		Period:      p,
@@ -190,23 +189,109 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, err
 		Rate:        pr.Rate,
 		Description: description,
 		ExchangedOn: exchangedOn,
-		IncomeID:    inc.ID,
-		CreatedAt:   now,
+		IncomeID:    s.newID(),
+		Status:      st,
+		CreatedAt:   s.now().UTC(),
 	}
-
-	out := expense.Expense{
-		ID:          s.newID(),
-		Period:      p,
-		CategoryID:  category.ExchangeCategoryID,
-		Amount:      amount,
-		Description: fmt.Sprintf("Exchange to %s %s at %s", converted, to, pr.Rate),
-		SpentOn:     exchangedOn,
-		ExchangeID:  ex.ID,
-		CreatedAt:   now,
-	}
+	inc, out := derived(ex, s.newID())
 
 	if err := s.exchanges.Save(ctx, ex, inc, out); err != nil {
 		return Exchange{}, fmt.Errorf("save exchange: %w", err)
+	}
+	return ex, nil
+}
+
+// derived builds the income (target currency) and the expense (source currency,
+// system exchange category) implied by an exchange. They share its date and status.
+func derived(ex Exchange, expenseID string) (income.Income, expense.Expense) {
+	inc := income.Income{
+		ID:          ex.IncomeID,
+		Period:      ex.Period,
+		Amount:      ex.To,
+		Kind:        income.KindExchange,
+		Description: fmt.Sprintf("Exchange %s %s at %s", ex.From, ex.From.Currency(), ex.Rate),
+		ReceivedOn:  ex.ExchangedOn,
+		Status:      ex.Status,
+		CreatedAt:   ex.CreatedAt,
+	}
+	out := expense.Expense{
+		ID:          expenseID,
+		Period:      ex.Period,
+		CategoryID:  category.ExchangeCategoryID,
+		Amount:      ex.From,
+		Description: fmt.Sprintf("Exchange to %s %s at %s", ex.To, ex.To.Currency(), ex.Rate),
+		SpentOn:     ex.ExchangedOn,
+		ExchangeID:  ex.ID,
+		Status:      ex.Status,
+		CreatedAt:   ex.CreatedAt,
+	}
+	return inc, out
+}
+
+// UpdateInput is a partial update of an exchange: nil fields keep their value.
+type UpdateInput struct {
+	Amount      *string // source amount; the target is recomputed with the exchange's own rate
+	Description *string
+	ExchangedOn *string
+	Status      *string
+}
+
+// Update changes an exchange of the period together with its income and expense,
+// e.g. to confirm a planned exchange with the amount really exchanged. The rate
+// stays the one the exchange was registered with.
+func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInput) (Exchange, error) {
+	p, err := period.Parse(periodStr)
+	if err != nil {
+		return Exchange{}, invalid(err)
+	}
+	ex, err := s.exchanges.Get(ctx, id)
+	if err != nil {
+		return Exchange{}, err
+	}
+	if ex.Period != p {
+		return Exchange{}, fmt.Errorf("%w: %q in %s", ErrNotFound, id, p)
+	}
+
+	if in.Amount != nil {
+		amount, err := money.Parse(*in.Amount, ex.From.Currency())
+		if err != nil {
+			return Exchange{}, invalid(err)
+		}
+		if !amount.IsPositive() {
+			return Exchange{}, invalid(errors.New("amount must be greater than zero"))
+		}
+		converted, err := amount.Convert(ex.Rate, ex.To.Currency())
+		if err != nil {
+			return Exchange{}, invalid(err)
+		}
+		if !converted.IsPositive() {
+			return Exchange{}, invalid(fmt.Errorf("%s %s converts to %s %s", amount, ex.From.Currency(), converted, ex.To.Currency()))
+		}
+		ex.From, ex.To = amount, converted
+	}
+	if in.Description != nil {
+		description := strings.TrimSpace(*in.Description)
+		if utf8.RuneCountInString(description) > maxDescriptionLength {
+			return Exchange{}, invalid(fmt.Errorf("description longer than %d characters", maxDescriptionLength))
+		}
+		ex.Description = description
+	}
+	if in.ExchangedOn != nil {
+		exchangedOn, err := time.Parse(time.DateOnly, *in.ExchangedOn)
+		if err != nil {
+			return Exchange{}, invalid(fmt.Errorf("exchanged_on %q (want YYYY-MM-DD)", *in.ExchangedOn))
+		}
+		ex.ExchangedOn = exchangedOn
+	}
+	if in.Status != nil {
+		if ex.Status, err = status.Parse(*in.Status); err != nil {
+			return Exchange{}, invalid(err)
+		}
+	}
+
+	inc, out := derived(ex, "") // the expense is updated through its exchange ID
+	if err := s.exchanges.Update(ctx, ex, inc, out); err != nil {
+		return Exchange{}, fmt.Errorf("update exchange: %w", err)
 	}
 	return ex, nil
 }

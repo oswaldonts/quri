@@ -38,7 +38,7 @@ func (q *Queries) DeleteRate(ctx context.Context, arg DeleteRateParams) (int64, 
 
 const getExchange = `-- name: GetExchange :one
 SELECT id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
-       rate_scaled, description, exchanged_on, income_id, created_at
+       rate_scaled, description, exchanged_on, income_id, created_at, status
 FROM exchanges
 WHERE id = ?
 `
@@ -58,6 +58,7 @@ func (q *Queries) GetExchange(ctx context.Context, id string) (Exchange, error) 
 		&i.ExchangedOn,
 		&i.IncomeID,
 		&i.CreatedAt,
+		&i.Status,
 	)
 	return i, err
 }
@@ -90,9 +91,9 @@ func (q *Queries) GetRate(ctx context.Context, arg GetRateParams) (Rate, error) 
 const insertExchange = `-- name: InsertExchange :exec
 INSERT INTO exchanges (
     id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
-    rate_scaled, description, exchanged_on, income_id, created_at
+    rate_scaled, description, exchanged_on, income_id, created_at, status
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertExchangeParams struct {
@@ -107,6 +108,7 @@ type InsertExchangeParams struct {
 	ExchangedOn     string
 	IncomeID        string
 	CreatedAt       string
+	Status          string
 }
 
 func (q *Queries) InsertExchange(ctx context.Context, arg InsertExchangeParams) error {
@@ -122,13 +124,14 @@ func (q *Queries) InsertExchange(ctx context.Context, arg InsertExchangeParams) 
 		arg.ExchangedOn,
 		arg.IncomeID,
 		arg.CreatedAt,
+		arg.Status,
 	)
 	return err
 }
 
 const listExchangesByPeriod = `-- name: ListExchangesByPeriod :many
 SELECT id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
-       rate_scaled, description, exchanged_on, income_id, created_at
+       rate_scaled, description, exchanged_on, income_id, created_at, status
 FROM exchanges
 WHERE period = ?
 ORDER BY exchanged_on, created_at
@@ -155,6 +158,7 @@ func (q *Queries) ListExchangesByPeriod(ctx context.Context, period string) ([]E
 			&i.ExchangedOn,
 			&i.IncomeID,
 			&i.CreatedAt,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -167,6 +171,36 @@ func (q *Queries) ListExchangesByPeriod(ctx context.Context, period string) ([]E
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateExchange = `-- name: UpdateExchange :execrows
+UPDATE exchanges
+SET from_amount_minor = ?, to_amount_minor = ?, description = ?, exchanged_on = ?, status = ?
+WHERE id = ?
+`
+
+type UpdateExchangeParams struct {
+	FromAmountMinor int64
+	ToAmountMinor   int64
+	Description     string
+	ExchangedOn     string
+	Status          string
+	ID              string
+}
+
+func (q *Queries) UpdateExchange(ctx context.Context, arg UpdateExchangeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateExchange,
+		arg.FromAmountMinor,
+		arg.ToAmountMinor,
+		arg.Description,
+		arg.ExchangedOn,
+		arg.Status,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const upsertRate = `-- name: UpsertRate :exec

@@ -142,22 +142,27 @@ func NewService(incomes IncomeReader, expenses ExpenseReader, balances BalanceRe
 	}
 }
 
-// Get builds the summary of a period, including what it carries from the previous one.
-func (s *Service) Get(ctx context.Context, periodStr string) (Summary, error) {
+// Get builds the summary of a period, including what it carries from the previous
+// one, as seen from the view ("confirmed" by default, or "projected").
+func (s *Service) Get(ctx context.Context, periodStr, viewStr string) (Summary, error) {
 	p, err := period.Parse(periodStr)
 	if err != nil {
 		return Summary{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
-	carry, err := s.carryInto(ctx, p)
+	view, err := ParseView(viewStr)
 	if err != nil {
 		return Summary{}, err
 	}
-	return s.summarize(ctx, p, carry)
+	carry, err := s.carryInto(ctx, p, view)
+	if err != nil {
+		return Summary{}, err
+	}
+	return s.summarize(ctx, p, carry, view)
 }
 
 // summarize builds the summary of a period given what it carries.
-func (s *Service) summarize(ctx context.Context, p period.Period, carry carries) (Summary, error) {
-	incomes, expenses, balances, err := s.movements(ctx, p)
+func (s *Service) summarize(ctx context.Context, p period.Period, carry carries, view View) (Summary, error) {
+	incomes, expenses, balances, err := s.movements(ctx, p, view)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -174,12 +179,12 @@ func (s *Service) summarize(ctx context.Context, p period.Period, carry carries)
 
 // GetCurrency builds the summary of one currency in a period. A currency without
 // activity returns an empty block (every amount in zero) instead of an error.
-func (s *Service) GetCurrency(ctx context.Context, periodStr, currencyStr string) (period.Period, CurrencySummary, error) {
+func (s *Service) GetCurrency(ctx context.Context, periodStr, currencyStr, view string) (period.Period, CurrencySummary, error) {
 	currency, err := money.ParseCurrency(currencyStr)
 	if err != nil {
 		return period.Period{}, CurrencySummary{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
-	sum, err := s.Get(ctx, periodStr)
+	sum, err := s.Get(ctx, periodStr, view)
 	if err != nil {
 		return period.Period{}, CurrencySummary{}, err
 	}

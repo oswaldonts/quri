@@ -20,6 +20,7 @@ type TrendsInput struct {
 	From     string // YYYY-MM, included
 	To       string // YYYY-MM, included
 	Currency string // ISO 4217 code
+	View     string // "confirmed" (default) or "projected"
 }
 
 // Trends compares several consecutive periods in one currency.
@@ -70,6 +71,10 @@ func (s *Service) Trends(ctx context.Context, in TrendsInput) (Trends, error) {
 	if err != nil {
 		return Trends{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
+	view, err := ParseView(in.View)
+	if err != nil {
+		return Trends{}, err
+	}
 	months := from.MonthsBetween(to)
 	if months == 0 {
 		return Trends{}, fmt.Errorf("%w: %w", ErrInvalidInput, errors.New("from must not be after to"))
@@ -80,13 +85,13 @@ func (s *Service) Trends(ctx context.Context, in TrendsInput) (Trends, error) {
 
 	// The carry is computed once for the first month; each month then passes its
 	// leftover to the next one.
-	carry, err := s.carryInto(ctx, from)
+	carry, err := s.carryInto(ctx, from, view)
 	if err != nil {
 		return Trends{}, err
 	}
 	perMonth := make([]CurrencySummary, 0, months)
 	for p := from; p.Compare(to) <= 0; p = p.Next() {
-		sum, err := s.summarize(ctx, p, carry)
+		sum, err := s.summarize(ctx, p, carry, view)
 		if err != nil {
 			return Trends{}, err
 		}

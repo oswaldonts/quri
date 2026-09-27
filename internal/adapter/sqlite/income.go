@@ -11,6 +11,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 // Compile-time check that IncomeRepository implements the core port.
@@ -60,6 +61,7 @@ func insertIncome(ctx context.Context, q *sqlitedb.Queries, in income.Income) er
 		ReceivedOn:  in.ReceivedOn.Format(time.DateOnly),
 		CreatedAt:   formatTime(in.CreatedAt),
 		CategoryID:  sql.NullString{String: in.CategoryID, Valid: in.CategoryID != ""},
+		Status:      storedStatus(in.Status),
 	})
 }
 
@@ -90,6 +92,7 @@ func toIncome(row sqlitedb.Income) (income.Income, error) {
 		Amount:      amount,
 		Kind:        income.Kind(row.Kind),
 		CategoryID:  row.CategoryID.String, // "" when NULL
+		Status:      status.Status(row.Status),
 		Description: row.Description,
 		ReceivedOn:  receivedOn,
 		CreatedAt:   createdAt,
@@ -117,6 +120,7 @@ func (r *IncomeRepository) Update(ctx context.Context, in income.Income) error {
 		Description: in.Description,
 		ReceivedOn:  in.ReceivedOn.Format(time.DateOnly),
 		CategoryID:  sql.NullString{String: in.CategoryID, Valid: in.CategoryID != ""},
+		Status:      storedStatus(in.Status),
 		ID:          in.ID,
 	})
 	return notFoundIfNone(n, err, income.ErrNotFound, in.ID)

@@ -14,7 +14,7 @@ import (
 // Declaring it here (on the consumer side) lets handler tests use a fake.
 type IncomeService interface {
 	Register(ctx context.Context, in income.RegisterInput) (income.Income, error)
-	List(ctx context.Context, period string) ([]income.Income, error)
+	List(ctx context.Context, period, status string) ([]income.Income, error)
 	Update(ctx context.Context, period, id string, in income.UpdateInput) (income.Income, error)
 	Delete(ctx context.Context, period, id string) error
 }
@@ -29,6 +29,7 @@ type UpdateIncomeInput struct {
 		Description *string       `json:"description,omitempty" maxLength:"200"`
 		ReceivedOn  *string       `json:"received_on,omitempty" format:"date"`
 		CategoryID  *string       `json:"category_id,omitempty" doc:"Contribution category; an empty string removes it."`
+		Status      *string       `json:"status,omitempty" enum:"planned,confirmed" doc:"Set confirmed when a planned entry happens; amount and date can be corrected in the same request."`
 	}
 }
 
@@ -41,6 +42,7 @@ type RegisterIncomeInput struct {
 		Kind        string       `json:"kind" enum:"salary,extra" doc:"Exchange incomes are created by POST /periods/{period}/exchanges."`
 		Description string       `json:"description,omitempty" maxLength:"200" example:"Sueldo julio"`
 		ReceivedOn  string       `json:"received_on" format:"date" example:"2026-07-31"`
+		Status      string       `json:"status,omitempty" enum:"planned,confirmed" doc:"planned: expected, not happened yet (only counts in view=projected). confirmed (default): happened."`
 		CategoryID  string       `json:"category_id,omitempty" example:"loans" doc:"Only for kind extra: the category this money is contributed to (an \"aporte\"). Must be used in the period."`
 	}
 }
@@ -54,6 +56,7 @@ type Income struct {
 	Amount      string    `json:"amount" example:"1330.00"`
 	Kind        string    `json:"kind" enum:"salary,extra,exchange"`
 	CategoryID  string    `json:"category_id,omitempty" doc:"Set when an extra income is contributed to a category."`
+	Status      string    `json:"status" enum:"planned,confirmed"`
 	Description string    `json:"description"`
 	ReceivedOn  string    `json:"received_on" format:"date" example:"2026-07-31"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -62,6 +65,12 @@ type Income struct {
 // IncomeOutput wraps an Income as the response body.
 type IncomeOutput struct {
 	Body Income
+}
+
+// ListIncomesInput is the request of GET /periods/{period}/incomes.
+type ListIncomesInput struct {
+	PeriodParam
+	Status string `query:"status" enum:"planned,confirmed" doc:"Only planned or only confirmed incomes."`
 }
 
 // IncomeListOutput is the response of GET /periods/{period}/incomes.
@@ -78,6 +87,7 @@ func toIncome(in income.Income) Income {
 		Amount:      in.Amount.String(),
 		Kind:        string(in.Kind),
 		CategoryID:  in.CategoryID,
+		Status:      string(in.Status),
 		Description: in.Description,
 		ReceivedOn:  in.ReceivedOn.Format(time.DateOnly),
 		CreatedAt:   in.CreatedAt,
@@ -104,6 +114,7 @@ func registerIncomes(api huma.API, incomes IncomeService) {
 			Description: in.Body.Description,
 			ReceivedOn:  in.Body.ReceivedOn,
 			CategoryID:  in.Body.CategoryID,
+			Status:      in.Body.Status,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "register income", err)
@@ -119,8 +130,8 @@ func registerIncomes(api huma.API, incomes IncomeService) {
 		Description: "Ordered by date, including the ones created by exchanges.",
 		Tags:        []string{tagIncomes},
 		Errors:      []int{http.StatusUnprocessableEntity},
-	}, func(ctx context.Context, in *PeriodParam) (*IncomeListOutput, error) {
-		incs, err := incomes.List(ctx, in.Period)
+	}, func(ctx context.Context, in *ListIncomesInput) (*IncomeListOutput, error) {
+		incs, err := incomes.List(ctx, in.Period, in.Status)
 		if err != nil {
 			return nil, toHTTPError(ctx, "list incomes", err)
 		}
@@ -150,6 +161,7 @@ func registerIncomeEdits(api huma.API, incomes IncomeService) {
 			Description: in.Body.Description,
 			ReceivedOn:  in.Body.ReceivedOn,
 			CategoryID:  in.Body.CategoryID,
+			Status:      in.Body.Status,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "update income", err)

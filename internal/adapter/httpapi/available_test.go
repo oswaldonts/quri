@@ -67,3 +67,58 @@ func TestCarryOver(t *testing.T) {
 		t.Errorf("August = %+v, want nothing carried", aug[0])
 	}
 }
+
+// TestPlanning plans September on top of August and confirms part of it.
+func TestPlanning(t *testing.T) {
+	h := newTestRouter(t)
+	send(h, http.MethodPut, "/periods/2026-09/rates/USD-PEN", `{"rate": "3.25"}`)
+	created[Income](t, h, "/periods/2026-08/incomes",
+		`{"currency": "PEN", "amount": "3018", "kind": "salary", "received_on": "2026-08-31"}`)
+
+	salary := created[Income](t, h, "/periods/2026-09/incomes",
+		`{"currency": "USD", "amount": "1330", "kind": "salary", "received_on": "2026-09-30", "status": "planned"}`)
+	ex := created[Exchange](t, h, "/periods/2026-09/exchanges",
+		`{"from": "USD", "to": "PEN", "amount": "1100", "exchanged_on": "2026-10-01", "status": "planned"}`)
+	insurance := created[Expense](t, h, "/periods/2026-09/expenses",
+		`{"category_id": "health-insurance", "currency": "PEN", "amount": "1000", "spent_on": "2026-10-02", "status": "planned"}`)
+	if salary.Status != "planned" || ex.Status != "planned" || insurance.Status != "planned" {
+		t.Fatalf("statuses = %s, %s, %s; want planned", salary.Status, ex.Status, insurance.Status)
+	}
+
+	available := func(view string) map[string]string {
+		t.Helper()
+		var as []Available
+		decode(t, send(h, http.MethodGet, "/periods/2026-09/available?view="+view, ""), &as)
+		out := map[string]string{}
+		for _, a := range as {
+			out[a.Currency] = a.Available
+		}
+		return out
+	}
+	// Confirmed: only August's carry. Projected: + 1330 − 1100 USD; + 3575 − 1000 PEN.
+	if got := available("confirmed"); got["PEN"] != "3018.00" || got["USD"] != "" {
+		t.Errorf("confirmed = %v, want PEN 3018.00 and no USD", got)
+	}
+	if got := available("projected"); got["PEN"] != "5593.00" || got["USD"] != "230.00" {
+		t.Errorf("projected = %v, want PEN 5593.00 and USD 230.00", got)
+	}
+
+	// The salary arrives and the exchange happens with 1200 USD: confirm them.
+	send(h, http.MethodPatch, "/periods/2026-09/incomes/"+salary.ID, `{"status": "confirmed"}`)
+	rec := send(h, http.MethodPatch, "/periods/2026-09/exchanges/"+ex.ID, `{"status": "confirmed", "amount": "1200"}`)
+	var confirmed Exchange
+	decode(t, rec, &confirmed)
+	if confirmed.Status != "confirmed" || confirmed.To.Amount != "3900.00" {
+		t.Errorf("confirmed exchange = %+v", confirmed)
+	}
+	if got := available("confirmed"); got["PEN"] != "6918.00" || got["USD"] != "130.00" {
+		t.Errorf("confirmed after confirming = %v, want PEN 6918.00 and USD 130.00", got)
+	}
+
+	var planned []Expense
+	decode(t, send(h, http.MethodGet, "/periods/2026-09/expenses?status=planned", ""), &planned)
+	if len(planned) != 1 || planned[0].ID != insurance.ID {
+		t.Errorf("planned expenses = %+v, want only the insurance", planned)
+	}
+	assertProblem(t, send(h, http.MethodGet, "/periods/2026-09/available?view=maybe", ""), http.StatusUnprocessableEntity)
+}

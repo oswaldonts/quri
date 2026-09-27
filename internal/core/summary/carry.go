@@ -41,7 +41,7 @@ type PeriodBounds interface {
 // carryInto computes what every currency carries into p, walking month by month
 // from the first period with data: each month's leftover (its real balance if
 // registered, otherwise its available money) becomes the next month's carry.
-func (s *Service) carryInto(ctx context.Context, p period.Period) (carries, error) {
+func (s *Service) carryInto(ctx context.Context, p period.Period, view View) (carries, error) {
 	carry := carries{}
 	first, ok, err := s.bounds.EarliestPeriod(ctx)
 	if err != nil {
@@ -51,7 +51,7 @@ func (s *Service) carryInto(ctx context.Context, p period.Period) (carries, erro
 		return carry, nil
 	}
 	for q := first; q.Compare(p) < 0; q = q.Next() {
-		incomes, expenses, balances, err := s.movements(ctx, q)
+		incomes, expenses, balances, err := s.movements(ctx, q, view)
 		if err != nil {
 			return nil, err
 		}
@@ -60,8 +60,8 @@ func (s *Service) carryInto(ctx context.Context, p period.Period) (carries, erro
 	return carry, nil
 }
 
-// movements reads what changes the money of a period.
-func (s *Service) movements(ctx context.Context, p period.Period) ([]income.Income, []expense.Expense, []balance.Balance, error) {
+// movements reads what changes the money of a period, as seen from the view.
+func (s *Service) movements(ctx context.Context, p period.Period, view View) ([]income.Income, []expense.Expense, []balance.Balance, error) {
 	incomes, err := s.incomes.ListByPeriod(ctx, p)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("list incomes: %w", err)
@@ -74,6 +74,7 @@ func (s *Service) movements(ctx context.Context, p period.Period) ([]income.Inco
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("list balances: %w", err)
 	}
+	incomes, expenses = view.filter(incomes, expenses)
 	return incomes, expenses, balances, nil
 }
 

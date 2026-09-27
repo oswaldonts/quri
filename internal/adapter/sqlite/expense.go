@@ -11,6 +11,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 // Compile-time check that ExpenseRepository implements the core port.
@@ -90,6 +91,7 @@ func insertExpense(ctx context.Context, q *sqlitedb.Queries, e expense.Expense) 
 		SpentOn:     e.SpentOn.Format(time.DateOnly),
 		ExchangeID:  sql.NullString{String: e.ExchangeID, Valid: e.ExchangeID != ""},
 		CreatedAt:   formatTime(e.CreatedAt),
+		Status:      storedStatus(e.Status),
 	}); err != nil {
 		return fmt.Errorf("insert expense: %w", err)
 	}
@@ -130,6 +132,7 @@ func toExpense(row sqlitedb.Expense) (expense.Expense, error) {
 		Description: row.Description,
 		SpentOn:     spentOn,
 		ExchangeID:  row.ExchangeID.String, // "" when NULL
+		Status:      status.Status(row.Status),
 		CreatedAt:   createdAt,
 	}, nil
 }
@@ -168,6 +171,7 @@ func (r *ExpenseRepository) Update(ctx context.Context, e expense.Expense) error
 		AmountMinor: e.Amount.Amount(),
 		Description: e.Description,
 		SpentOn:     e.SpentOn.Format(time.DateOnly),
+		Status:      storedStatus(e.Status),
 		ID:          e.ID,
 	})
 	if err := notFoundIfNone(n, err, expense.ErrNotFound, e.ID); err != nil {

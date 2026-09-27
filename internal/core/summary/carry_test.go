@@ -11,6 +11,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 // store is an in-test implementation of every reader the service needs.
@@ -103,7 +104,7 @@ func august(t *testing.T, s *store) {
 
 func availableOf(t *testing.T, svc *Service, p string) map[money.Currency]Available {
 	t.Helper()
-	as, err := svc.Available(context.Background(), p)
+	as, err := svc.Available(context.Background(), p, "")
 	if err != nil {
 		t.Fatalf("Available(%s): %v", p, err)
 	}
@@ -165,7 +166,7 @@ func TestCarryPrefersRealBalance(t *testing.T) {
 	}
 
 	// The summary shows the same figures.
-	sum, err := svc.Get(context.Background(), "2026-09")
+	sum, err := svc.Get(context.Background(), "2026-09", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,5 +208,50 @@ func TestTrendsIncludeCarry(t *testing.T) {
 	// Income stays what was really received: the carry is not counted as income.
 	if tr.Periods[1].Income.String() != "0.00" {
 		t.Errorf("September income = %s, want 0.00", tr.Periods[1].Income)
+	}
+}
+
+func TestProjectedView(t *testing.T) {
+	s := newStore()
+	august(t, s)
+	sep := mustP(t, "2026-09")
+	// Planning September: salary and an exchange expected, insurance expected, groceries already done.
+	s.incomes[sep] = []income.Income{
+		{Kind: income.KindSalary, Amount: m(t, "1330.00", money.USD), Status: status.Planned},
+	}
+	s.expenses[sep] = []expense.Expense{
+		{CategoryID: "health-insurance", Amount: m(t, "1000.00", money.PEN), Status: status.Planned},
+		{CategoryID: "market", Amount: m(t, "200.00", money.PEN), Status: status.Confirmed},
+	}
+	svc := newCarryService(s)
+	ctx := context.Background()
+
+	confirmed, _ := svc.Available(ctx, "2026-09", "confirmed")
+	projected, _ := svc.Available(ctx, "2026-09", "projected")
+	byCurrency := func(as []Available) map[money.Currency]string {
+		out := map[money.Currency]string{}
+		for _, a := range as {
+			out[a.Currency] = a.Available.String()
+		}
+		return out
+	}
+	// Confirmed: 3018 − 200 PEN; 130 USD. Projected: also − 1000 PEN and + 1330 USD.
+	if got := byCurrency(confirmed); got[money.PEN] != "2818.00" || got[money.USD] != "130.00" {
+		t.Errorf("confirmed = %v", got)
+	}
+	if got := byCurrency(projected); got[money.PEN] != "1818.00" || got[money.USD] != "1460.00" {
+		t.Errorf("projected = %v", got)
+	}
+
+	// October carries each view's own leftover.
+	octConfirmed, _ := svc.Available(ctx, "2026-10", "")
+	octProjected, _ := svc.Available(ctx, "2026-10", "projected")
+	if byCurrency(octConfirmed)[money.USD] != "130.00" || byCurrency(octProjected)[money.USD] != "1460.00" {
+		t.Errorf("October USD confirmed/projected = %s/%s, want 130.00/1460.00",
+			byCurrency(octConfirmed)[money.USD], byCurrency(octProjected)[money.USD])
+	}
+
+	if _, err := svc.Available(ctx, "2026-09", "maybe"); err == nil {
+		t.Error("unknown view must fail")
 	}
 }

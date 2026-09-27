@@ -11,6 +11,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 type fakeRepo struct{ saved []Expense }
@@ -353,5 +354,45 @@ func TestUpdateAndDeleteErrors(t *testing.T) {
 	}
 	if err := svc.Delete(ctx, "julio", "normal"); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("bad period: err = %v, want %v", err, ErrInvalidInput)
+	}
+}
+
+func TestStatusAndFilter(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(&fakeRepo{})
+
+	in := validInput()
+	in.Status = "planned"
+	planned, err := svc.Register(ctx, in)
+	if err != nil || planned.Status != status.Planned {
+		t.Fatalf("planned = %q, %v", planned.Status, err)
+	}
+	if _, err := svc.Register(ctx, validInput()); err != nil { // confirmed by default
+		t.Fatal(err)
+	}
+	batch := validBatch()
+	batch.Status = "planned"
+	batch.Items[0].Status = "confirmed" // an item can override the common status
+	if _, err := svc.RegisterBatch(ctx, batch); err != nil {
+		t.Fatal(err)
+	}
+
+	count := func(st string) int {
+		es, err := svc.List(ctx, "2026-07", Filter{Status: st})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(es)
+	}
+	if count("planned") != 3 || count("confirmed") != 2 || count("") != 5 {
+		t.Errorf("planned %d, confirmed %d, all %d; want 3, 2, 5", count("planned"), count("confirmed"), count(""))
+	}
+	if _, err := svc.List(ctx, "2026-07", Filter{Status: "pending"}); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("bad status filter: err = %v, want %v", err, ErrInvalidInput)
+	}
+
+	got, err := svc.Update(ctx, "2026-07", planned.ID, UpdateInput{Status: ptr("confirmed"), Amount: ptr("46.00")})
+	if err != nil || got.Status != status.Confirmed || got.Amount.String() != "46.00" {
+		t.Errorf("confirm = %+v, %v", got, err)
 	}
 }

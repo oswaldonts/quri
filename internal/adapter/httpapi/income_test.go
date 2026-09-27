@@ -36,6 +36,7 @@ func TestRegisterIncome(t *testing.T) {
 		Currency:    "USD",
 		Amount:      "1330.00",
 		Kind:        "salary",
+		Status:      "confirmed",
 		Description: "Sueldo julio",
 		ReceivedOn:  "2026-07-31",
 		CreatedAt:   got.CreatedAt,
@@ -79,7 +80,7 @@ func (failingIncomes) Register(context.Context, income.RegisterInput) (income.In
 	return income.Income{}, errors.New("connection refused")
 }
 
-func (failingIncomes) List(context.Context, string) ([]income.Income, error) {
+func (failingIncomes) List(context.Context, string, string) ([]income.Income, error) {
 	return nil, errors.New("connection refused")
 }
 

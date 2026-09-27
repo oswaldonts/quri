@@ -13,6 +13,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 // Compile-time checks that the repositories implement the core ports.
@@ -131,6 +132,7 @@ func (r *ExchangeRepository) Save(ctx context.Context, e exchange.Exchange, in i
 		ExchangedOn:     e.ExchangedOn.Format(time.DateOnly),
 		IncomeID:        e.IncomeID,
 		CreatedAt:       formatTime(e.CreatedAt),
+		Status:          storedStatus(e.Status),
 	}); err != nil {
 		return fmt.Errorf("insert exchange: %w", err)
 	}
@@ -167,6 +169,49 @@ func (r *ExchangeRepository) ListByPeriod(ctx context.Context, p period.Period) 
 		out = append(out, e)
 	}
 	return out, nil
+}
+
+// Update replaces the exchange, its income and its expense in one transaction.
+func (r *ExchangeRepository) Update(ctx context.Context, e exchange.Exchange, in income.Income, out expense.Expense) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlitedb.New(tx)
+	n, err := q.UpdateExchange(ctx, sqlitedb.UpdateExchangeParams{
+		FromAmountMinor: e.From.Amount(),
+		ToAmountMinor:   e.To.Amount(),
+		Description:     e.Description,
+		ExchangedOn:     e.ExchangedOn.Format(time.DateOnly),
+		Status:          storedStatus(e.Status),
+		ID:              e.ID,
+	})
+	if err := notFoundIfNone(n, err, exchange.ErrNotFound, e.ID); err != nil {
+		return err
+	}
+	if _, err := q.UpdateIncome(ctx, sqlitedb.UpdateIncomeParams{
+		Currency:    string(in.Amount.Currency()),
+		AmountMinor: in.Amount.Amount(),
+		Kind:        string(in.Kind),
+		Description: in.Description,
+		ReceivedOn:  in.ReceivedOn.Format(time.DateOnly),
+		Status:      storedStatus(in.Status),
+		ID:          in.ID,
+	}); err != nil {
+		return fmt.Errorf("update income: %w", err)
+	}
+	if err := q.UpdateExchangeExpense(ctx, sqlitedb.UpdateExchangeExpenseParams{
+		AmountMinor: out.Amount.Amount(),
+		Description: out.Description,
+		SpentOn:     out.SpentOn.Format(time.DateOnly),
+		Status:      storedStatus(out.Status),
+		ExchangeID:  sql.NullString{String: e.ID, Valid: true},
+	}); err != nil {
+		return fmt.Errorf("update expense: %w", err)
+	}
+	return tx.Commit()
 }
 
 // Delete removes the exchange with its expense and income in one transaction,
@@ -233,6 +278,7 @@ func toExchange(row sqlitedb.Exchange) (exchange.Exchange, error) {
 		Description: row.Description,
 		ExchangedOn: exchangedOn,
 		IncomeID:    row.IncomeID,
+		Status:      status.Status(row.Status),
 		CreatedAt:   createdAt,
 	}, nil
 }

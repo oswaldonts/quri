@@ -13,19 +13,19 @@ WHERE period = ? AND from_currency = ? AND to_currency = ?;
 -- name: InsertExchange :exec
 INSERT INTO exchanges (
     id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
-    rate_scaled, description, exchanged_on, income_id, created_at
+    rate_scaled, description, exchanged_on, income_id, created_at, status
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetExchange :one
 SELECT id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
-       rate_scaled, description, exchanged_on, income_id, created_at
+       rate_scaled, description, exchanged_on, income_id, created_at, status
 FROM exchanges
 WHERE id = ?;
 
 -- name: ListExchangesByPeriod :many
 SELECT id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
-       rate_scaled, description, exchanged_on, income_id, created_at
+       rate_scaled, description, exchanged_on, income_id, created_at, status
 FROM exchanges
 WHERE period = ?
 ORDER BY exchanged_on, created_at;
@@ -35,3 +35,8 @@ DELETE FROM exchanges WHERE id = ?;
 
 -- name: DeleteRate :execrows
 DELETE FROM rates WHERE period = ? AND from_currency = ? AND to_currency = ?;
+
+-- name: UpdateExchange :execrows
+UPDATE exchanges
+SET from_amount_minor = ?, to_amount_minor = ?, description = ?, exchanged_on = ?, status = ?
+WHERE id = ?;

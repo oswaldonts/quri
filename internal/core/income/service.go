@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -12,6 +13,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
 
 const maxDescriptionLength = 200
@@ -62,6 +64,7 @@ type RegisterInput struct {
 	Description string // optional, up to 200 characters
 	ReceivedOn  string // YYYY-MM-DD
 	CategoryID  string // optional, only for "extra": category the money is contributed to
+	Status      string // "planned" or "confirmed" (default)
 }
 
 // Register validates the input and stores a new income.
@@ -85,6 +88,7 @@ type UpdateInput struct {
 	Description *string
 	ReceivedOn  *string
 	CategoryID  *string
+	Status      *string
 }
 
 // Update changes an income of the period, validating the result like Register.
@@ -102,6 +106,7 @@ func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInp
 		Description: current.Description,
 		ReceivedOn:  current.ReceivedOn.Format(time.DateOnly),
 		CategoryID:  current.CategoryID,
+		Status:      string(current.Status),
 	}
 	apply(&merged.Currency, in.Currency)
 	apply(&merged.Amount, in.Amount)
@@ -109,6 +114,7 @@ func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInp
 	apply(&merged.Description, in.Description)
 	apply(&merged.ReceivedOn, in.ReceivedOn)
 	apply(&merged.CategoryID, in.CategoryID)
+	apply(&merged.Status, in.Status)
 
 	updated, err := s.build(ctx, merged)
 	if err != nil {
@@ -196,12 +202,18 @@ func (s *Service) build(ctx context.Context, in RegisterInput) (Income, error) {
 		return Income{}, err
 	}
 
+	st, err := status.Parse(in.Status)
+	if err != nil {
+		return Income{}, invalid(err)
+	}
+
 	inc := Income{
 		ID:          s.newID(),
 		Period:      p,
 		Amount:      amount,
 		Kind:        kind,
 		CategoryID:  categoryID,
+		Status:      st,
 		Description: description,
 		ReceivedOn:  receivedOn,
 		CreatedAt:   s.now().UTC(),
@@ -209,13 +221,24 @@ func (s *Service) build(ctx context.Context, in RegisterInput) (Income, error) {
 	return inc, nil
 }
 
-// List returns the incomes of a period ordered by date.
-func (s *Service) List(ctx context.Context, periodStr string) ([]Income, error) {
+// List returns the incomes of a period ordered by date; statusFilter ("planned" or
+// "confirmed") keeps only those, empty keeps all.
+func (s *Service) List(ctx context.Context, periodStr, statusFilter string) ([]Income, error) {
 	p, err := period.Parse(periodStr)
 	if err != nil {
 		return nil, invalid(err)
 	}
-	return s.repo.ListByPeriod(ctx, p)
+	var st status.Status
+	if statusFilter != "" {
+		if st, err = status.Parse(statusFilter); err != nil {
+			return nil, invalid(err)
+		}
+	}
+	all, err := s.repo.ListByPeriod(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(all, func(in Income) bool { return st != "" && in.Status != st }), nil
 }
 
 // contributionCategory validates the optional target category of an extra income.

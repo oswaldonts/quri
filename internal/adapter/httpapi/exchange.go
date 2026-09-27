@@ -23,7 +23,19 @@ type RateManager interface {
 type ExchangeService interface {
 	Register(ctx context.Context, in exchange.RegisterInput) (exchange.Exchange, error)
 	List(ctx context.Context, period string) ([]exchange.Exchange, error)
+	Update(ctx context.Context, period, id string, in exchange.UpdateInput) (exchange.Exchange, error)
 	Delete(ctx context.Context, period, id string) error
+}
+
+// UpdateExchangeInput is the request of PATCH /periods/{period}/exchanges/{id}.
+type UpdateExchangeInput struct {
+	EntryParams
+	Body struct {
+		Amount      *string `json:"amount,omitempty" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" doc:"Source amount; the target is recomputed with the exchange's own rate."`
+		Description *string `json:"description,omitempty" maxLength:"200"`
+		ExchangedOn *string `json:"exchanged_on,omitempty" format:"date"`
+		Status      *string `json:"status,omitempty" enum:"planned,confirmed" doc:"Set confirmed when a planned entry happens; amount and date can be corrected in the same request."`
+	}
 }
 
 // ExchangeListOutput is the response of GET /periods/{period}/exchanges.
@@ -88,6 +100,7 @@ type RegisterExchangeInput struct {
 		Amount      string       `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"1096.00" doc:"Amount spent in the source currency."`
 		Description string       `json:"description,omitempty" maxLength:"200" example:"Casa de cambio"`
 		ExchangedOn string       `json:"exchanged_on" format:"date" example:"2026-08-01"`
+		Status      string       `json:"status,omitempty" enum:"planned,confirmed" doc:"planned: expected, not happened yet (only counts in view=projected). confirmed (default): happened."`
 	}
 }
 
@@ -101,6 +114,7 @@ type Exchange struct {
 	Description string    `json:"description"`
 	ExchangedOn string    `json:"exchanged_on" format:"date" example:"2026-08-01"`
 	IncomeID    string    `json:"income_id" doc:"ID of the exchange income created in the target currency."`
+	Status      string    `json:"status" enum:"planned,confirmed"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -119,6 +133,7 @@ func toExchange(e exchange.Exchange) Exchange {
 		Description: e.Description,
 		ExchangedOn: e.ExchangedOn.Format(time.DateOnly),
 		IncomeID:    e.IncomeID,
+		Status:      string(e.Status),
 		CreatedAt:   e.CreatedAt,
 	}
 }
@@ -192,6 +207,28 @@ func registerExchanges(api huma.API, exchanges ExchangeService) {
 		return out, nil
 	})
 
+	huma.Register(api, huma.Operation{
+		OperationID: "update-exchange",
+		Method:      http.MethodPatch,
+		Path:        "/periods/{period}/exchanges/{id}",
+		Summary:     "Update an exchange",
+		Description: "Changes the exchange together with its income and expense, e.g. to confirm a planned " +
+			"exchange with the amount really exchanged. The rate stays the one it was registered with.",
+		Tags:   []string{tagExchanges},
+		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *UpdateExchangeInput) (*ExchangeOutput, error) {
+		ex, err := exchanges.Update(ctx, in.Period, in.ID, exchange.UpdateInput{
+			Amount:      in.Body.Amount,
+			Description: in.Body.Description,
+			ExchangedOn: in.Body.ExchangedOn,
+			Status:      in.Body.Status,
+		})
+		if err != nil {
+			return nil, toHTTPError(ctx, "update exchange", err)
+		}
+		return &ExchangeOutput{Body: toExchange(ex)}, nil
+	})
+
 	huma.Register(api, deleteOperation("delete-exchange", "/periods/{period}/exchanges/{id}", "Delete an exchange",
 		"Deletes the exchange together with the income and the expense it created, in one transaction. "+
 			"To correct an exchange, delete it and register it again.", tagExchanges),
@@ -219,6 +256,7 @@ func registerExchanges(api huma.API, exchanges ExchangeService) {
 			Amount:      in.Body.Amount,
 			Description: in.Body.Description,
 			ExchangedOn: in.Body.ExchangedOn,
+			Status:      in.Body.Status,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "register exchange", err)
