@@ -1,3 +1,6 @@
+# Built from the repository root, which is the build context:
+#   docker build -f docker/Dockerfile -t go-income-mgr:<tag> .
+
 # Build stage: compiles a static binary with the full Go toolchain.
 FROM golang:1.27-alpine AS build
 

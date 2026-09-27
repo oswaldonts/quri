@@ -1,11 +1,16 @@
 # Development environment: the Go toolchain runs in a container, nothing is installed on the host.
+# Run from the repository root:
 #
-#   docker compose up                              # run the API on 127.0.0.1:8080
-#   docker compose run --rm api go test ./...      # run any go command
-#   docker compose run --rm sqlc generate          # regenerate Go code from the SQL queries
+#   docker compose -f docker/compose.yaml up                            # run the API on 127.0.0.1:8080
+#   docker compose -f docker/compose.yaml run --rm api go test ./...    # run any go command
+#   docker compose -f docker/compose.yaml run --rm sqlc generate        # regenerate Go code from the SQL queries
+#
+# Relative paths below resolve from this directory, so ".." is the repository root.
 #
 # Runs as the host user so generated files (go.mod, go.sum) are not owned by root.
 # Build and module caches live in the host home directory to survive container restarts.
+name: go-income-mgr # otherwise the project would be named after this directory
+
 services:
   api:
     image: golang:1.27-alpine
@@ -19,7 +24,7 @@ services:
       GOCACHE: /go-cache/build
       GOMODCACHE: /go-cache/mod
     volumes:
-      - .:/app
+      - ..:/app
       - ${HOME}/.cache/go-container:/go-cache
     ports:
       - "127.0.0.1:8080:8080"
@@ -29,5 +34,5 @@ services:
     working_dir: /src
     user: "1000:1000"
     volumes:
-      - .:/src
+      - ..:/src
     profiles: [tools] # not started by "docker compose up"

@@ -1,8 +1,9 @@
 // Package sqlite implements the core repositories on SQLite.
 //
 // Queries live in queries/*.sql and the schema in migrations/*.sql; sqlc turns
-// them into the type-safe code of the sqlitedb package (docker compose run --rm
-// sqlc generate). Migrations are embedded in the binary and applied on Open.
+// them into the type-safe code of the sqlitedb package (docker compose -f
+// docker/compose.yaml run --rm sqlc generate). Migrations are embedded in the
+// binary and applied on Open.
 package sqlite
 
 import (

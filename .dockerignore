@@ -2,7 +2,9 @@
 .git
 .env
 .env.*
-compose.yaml
-Dockerfile
 .dockerignore
+docker/
+deploy/
+docs/
+data/
 *.md
