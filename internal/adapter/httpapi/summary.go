@@ -7,12 +7,14 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 )
 
 // SummaryService is what the HTTP layer needs to build period summaries.
 type SummaryService interface {
 	Get(ctx context.Context, period string) (summary.Summary, error)
+	GetCurrency(ctx context.Context, period, currency string) (period.Period, summary.CurrencySummary, error)
 	Trends(ctx context.Context, in summary.TrendsInput) (summary.Trends, error)
 	Available(ctx context.Context, period string) ([]summary.Available, error)
 }
@@ -33,31 +35,39 @@ type CurrencySummary struct {
 		Extra    string `json:"extra" doc:"Includes contributions to categories."`
 		Total    string `json:"total"`
 	} `json:"income"`
-	Categories    []CategoryTotal `json:"categories" doc:"Categories with activity, by amount spent (highest first)."`
-	Groups        []GroupTotal    `json:"groups" doc:"By amount spent (highest first)."`
-	Tags          []TagTotal      `json:"tags" doc:"By amount spent. An expense with several tags counts in each one."`
-	TopItems      []ItemTotal     `json:"top_items" doc:"Up to 10 descriptions with the most money spent (case-insensitive; exchanges excluded)."`
-	Committed     string          `json:"committed" doc:"Spent in committed categories (must be paid every month)."`
-	Discretionary string          `json:"discretionary" doc:"Spent in the other non-system categories."`
-	Exchanged     string          `json:"exchanged" doc:"Spent in the system category Cambio."`
-	Spent         string          `json:"spent"`
-	Budgeted      string          `json:"budgeted,omitempty" doc:"Sum of the category budgets, if any."`
-	Available     string          `json:"available" doc:"Income total minus spent: the money that should be left."`
-	Real          string          `json:"real,omitempty" doc:"Real balance, if registered."`
-	Difference    string          `json:"difference,omitempty" doc:"available − real. 0 means every entry is registered; negative: more money than registered; positive: an expense is missing."`
+	Contributions []ContributionTotal `json:"contributions" doc:"Extra incomes assigned to a category (aportes), highest first. They are income, already counted in income.extra."`
+	Categories    []CategoryTotal     `json:"categories" doc:"Categories with expenses or a budget, by amount spent (highest first)."`
+	Groups        []GroupTotal        `json:"groups" doc:"By amount spent (highest first)."`
+	Tags          []TagTotal          `json:"tags" doc:"By amount spent. An expense with several tags counts in each one."`
+	TopItems      []ItemTotal         `json:"top_items" doc:"Up to 10 descriptions with the most money spent (case-insensitive; exchanges excluded)."`
+	Committed     string              `json:"committed" doc:"Spent in committed categories (must be paid every month)."`
+	Discretionary string              `json:"discretionary" doc:"Spent in the other non-system categories."`
+	Exchanged     string              `json:"exchanged" doc:"Spent in the system category Cambio."`
+	Spent         string              `json:"spent"`
+	Budgeted      string              `json:"budgeted,omitempty" doc:"Sum of the category budgets, if any."`
+	Available     string              `json:"available" doc:"Income total minus spent: the money that should be left."`
+	Real          string              `json:"real,omitempty" doc:"Real balance, if registered."`
+	Difference    string              `json:"difference,omitempty" doc:"available − real. 0 means every entry is registered; negative: more money than registered; positive: an expense is missing."`
 }
 
-// CategoryTotal is what a category received and spent in a currency.
+// ContributionTotal is the extra money assigned to a category.
+type ContributionTotal struct {
+	CategoryID string `json:"category_id" example:"loans"`
+	Name       string `json:"name" example:"Créditos"`
+	Amount     string `json:"amount" example:"118.00"`
+	Count      int    `json:"count" doc:"Number of contributions."`
+}
+
+// CategoryTotal is what was spent in a category in a currency.
 type CategoryTotal struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Group       string `json:"group"`
-	Committed   bool   `json:"committed"`
-	Contributed string `json:"contributed" doc:"Extra incomes contributed to the category."`
-	Spent       string `json:"spent"`
-	Count       int    `json:"count" doc:"Number of expenses."`
-	Budget      string `json:"budget,omitempty" doc:"Planned amount, if the category has a budget."`
-	Remaining   string `json:"remaining,omitempty" doc:"budget − spent; negative when over budget."`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Group     string `json:"group"`
+	Committed bool   `json:"committed"`
+	Spent     string `json:"spent"`
+	Count     int    `json:"count" doc:"Number of expenses."`
+	Budget    string `json:"budget,omitempty" doc:"Planned amount, if the category has a budget."`
+	Remaining string `json:"remaining,omitempty" doc:"budget − spent; negative when over budget."`
 }
 
 // GroupTotal is the money spent in a group.
@@ -92,51 +102,81 @@ func toSummary(s summary.Summary) Summary {
 		Currencies: make([]CurrencySummary, 0, len(s.Currencies)),
 	}
 	for _, c := range s.Currencies {
-		cs := CurrencySummary{
-			Currency:      string(c.Currency),
-			Categories:    make([]CategoryTotal, 0, len(c.Categories)),
-			Groups:        make([]GroupTotal, 0, len(c.Groups)),
-			Tags:          make([]TagTotal, 0, len(c.Tags)),
-			TopItems:      make([]ItemTotal, 0, len(c.TopItems)),
-			Committed:     c.Committed.String(),
-			Discretionary: c.Discretionary.String(),
-			Exchanged:     c.Exchanged.String(),
-			Spent:         c.Spent.String(),
-			Budgeted:      optional(c.Budgeted),
-			Available:     c.Available.String(),
-			Real:          optional(c.Real),
-			Difference:    optional(c.Difference),
-		}
-		cs.Income.Salary = c.Income.Salary.String()
-		cs.Income.Exchange = c.Income.Exchange.String()
-		cs.Income.Extra = c.Income.Extra.String()
-		cs.Income.Total = c.Income.Total.String()
-
-		for _, ct := range c.Categories {
-			cs.Categories = append(cs.Categories, CategoryTotal{
-				ID:          ct.Category.ID,
-				Name:        ct.Category.Name,
-				Group:       string(ct.Category.Group),
-				Committed:   ct.Category.Committed,
-				Contributed: ct.Contributed.String(),
-				Spent:       ct.Spent.String(),
-				Count:       ct.Count,
-				Budget:      optional(ct.Budget),
-				Remaining:   optional(ct.Remaining),
-			})
-		}
-		for _, g := range c.Groups {
-			cs.Groups = append(cs.Groups, GroupTotal{Group: string(g.Group), Spent: g.Spent.String()})
-		}
-		for _, t := range c.Tags {
-			cs.Tags = append(cs.Tags, TagTotal{Tag: t.Tag, Spent: t.Spent.String(), Count: t.Count})
-		}
-		for _, it := range c.TopItems {
-			cs.TopItems = append(cs.TopItems, ItemTotal{Description: it.Description, Spent: it.Spent.String(), Count: it.Count})
-		}
-		out.Currencies = append(out.Currencies, cs)
+		out.Currencies = append(out.Currencies, toCurrencySummary(c))
 	}
 	return out
+}
+
+func toCurrencySummary(c summary.CurrencySummary) CurrencySummary {
+	cs := CurrencySummary{
+		Currency:      string(c.Currency),
+		Contributions: make([]ContributionTotal, 0, len(c.Contributions)),
+		Categories:    make([]CategoryTotal, 0, len(c.Categories)),
+		Groups:        make([]GroupTotal, 0, len(c.Groups)),
+		Tags:          make([]TagTotal, 0, len(c.Tags)),
+		TopItems:      make([]ItemTotal, 0, len(c.TopItems)),
+		Committed:     c.Committed.String(),
+		Discretionary: c.Discretionary.String(),
+		Exchanged:     c.Exchanged.String(),
+		Spent:         c.Spent.String(),
+		Budgeted:      optional(c.Budgeted),
+		Available:     c.Available.String(),
+		Real:          optional(c.Real),
+		Difference:    optional(c.Difference),
+	}
+	cs.Income.Salary = c.Income.Salary.String()
+	cs.Income.Exchange = c.Income.Exchange.String()
+	cs.Income.Extra = c.Income.Extra.String()
+	cs.Income.Total = c.Income.Total.String()
+
+	for _, ct := range c.Contributions {
+		cs.Contributions = append(cs.Contributions, ContributionTotal{
+			CategoryID: ct.Category.ID,
+			Name:       ct.Category.Name,
+			Amount:     ct.Amount.String(),
+			Count:      ct.Count,
+		})
+	}
+	for _, ct := range c.Categories {
+		cs.Categories = append(cs.Categories, CategoryTotal{
+			ID:        ct.Category.ID,
+			Name:      ct.Category.Name,
+			Group:     string(ct.Category.Group),
+			Committed: ct.Category.Committed,
+			Spent:     ct.Spent.String(),
+			Count:     ct.Count,
+			Budget:    optional(ct.Budget),
+			Remaining: optional(ct.Remaining),
+		})
+	}
+	for _, g := range c.Groups {
+		cs.Groups = append(cs.Groups, GroupTotal{Group: string(g.Group), Spent: g.Spent.String()})
+	}
+	for _, t := range c.Tags {
+		cs.Tags = append(cs.Tags, TagTotal{Tag: t.Tag, Spent: t.Spent.String(), Count: t.Count})
+	}
+	for _, it := range c.TopItems {
+		cs.TopItems = append(cs.TopItems, ItemTotal{Description: it.Description, Spent: it.Spent.String(), Count: it.Count})
+	}
+	return cs
+}
+
+// PeriodCurrencySummary is the summary of one currency, with its period.
+type PeriodCurrencySummary struct {
+	Period     string `json:"period" example:"2026-08"`
+	SpendMonth string `json:"spend_month" example:"2026-09"`
+	CurrencySummary
+}
+
+// CurrencySummaryInput is the request of GET /periods/{period}/summary/{currency}.
+type CurrencySummaryInput struct {
+	PeriodParam
+	Currency CurrencyCode `path:"currency"`
+}
+
+// CurrencySummaryOutput wraps PeriodCurrencySummary as the response body.
+type CurrencySummaryOutput struct {
+	Body PeriodCurrencySummary
 }
 
 // optional formats a money pointer, "" when nil (omitted from the JSON).
@@ -148,6 +188,27 @@ func optional(m *money.Money) string {
 }
 
 func registerSummary(api huma.API, summaries SummaryService) {
+	huma.Register(api, huma.Operation{
+		OperationID: "get-currency-summary",
+		Method:      http.MethodGet,
+		Path:        "/periods/{period}/summary/{currency}",
+		Summary:     "Summary of a period in one currency",
+		Description: "The block of one currency from the summary. A currency without activity in the period " +
+			"returns every amount in zero.",
+		Tags:   []string{tagSummary},
+		Errors: []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *CurrencySummaryInput) (*CurrencySummaryOutput, error) {
+		p, cs, err := summaries.GetCurrency(ctx, in.Period, string(in.Currency))
+		if err != nil {
+			return nil, toHTTPError(ctx, "get currency summary", err)
+		}
+		return &CurrencySummaryOutput{Body: PeriodCurrencySummary{
+			Period:          p.String(),
+			SpendMonth:      p.SpendMonth().String(),
+			CurrencySummary: toCurrencySummary(cs),
+		}}, nil
+	})
+
 	huma.Register(api, huma.Operation{
 		OperationID: "get-summary",
 		Method:      http.MethodGet,

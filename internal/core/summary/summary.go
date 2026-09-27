@@ -57,10 +57,11 @@ type CurrencySummary struct {
 	Currency money.Currency
 	Income   IncomeTotals
 
-	Categories []CategoryTotal // by amount spent, highest first
-	Groups     []GroupTotal    // by amount spent, highest first
-	Tags       []TagTotal      // by amount spent, highest first
-	TopItems   []ItemTotal     // descriptions with the most money spent (exchanges excluded)
+	Contributions []ContributionTotal // extras assigned to categories, highest first
+	Categories    []CategoryTotal     // categories with expenses or a budget, by amount spent
+	Groups        []GroupTotal        // by amount spent, highest first
+	Tags          []TagTotal          // by amount spent, highest first
+	TopItems      []ItemTotal         // descriptions with the most money spent (exchanges excluded)
 
 	Committed     money.Money  // spent in committed categories (must be paid every month)
 	Discretionary money.Money  // spent in the other non-system categories
@@ -81,14 +82,20 @@ type IncomeTotals struct {
 	Total    money.Money
 }
 
-// CategoryTotal is what a category received and spent.
+// CategoryTotal is what was spent in a category.
 type CategoryTotal struct {
-	Category    category.Category
-	Contributed money.Money // extra incomes contributed to the category
-	Spent       money.Money
-	Count       int          // number of expenses
-	Budget      *money.Money // planned amount, if any
-	Remaining   *money.Money // budget − spent; negative when over budget
+	Category  category.Category
+	Spent     money.Money
+	Count     int          // number of expenses
+	Budget    *money.Money // planned amount, if any
+	Remaining *money.Money // budget − spent; negative when over budget
+}
+
+// ContributionTotal is the extra money assigned to a category (an "aporte").
+type ContributionTotal struct {
+	Category category.Category
+	Amount   money.Money
+	Count    int // number of contributions
 }
 
 // GroupTotal is the money spent in a group of categories.
@@ -159,6 +166,20 @@ func (s *Service) Get(ctx context.Context, periodStr string) (Summary, error) {
 	return build(p, entries{incomes, expenses, balances, budgets}, catalog), nil
 }
 
+// GetCurrency builds the summary of one currency in a period. A currency without
+// activity returns an empty block (every amount in zero) instead of an error.
+func (s *Service) GetCurrency(ctx context.Context, periodStr, currencyStr string) (period.Period, CurrencySummary, error) {
+	currency, err := money.ParseCurrency(currencyStr)
+	if err != nil {
+		return period.Period{}, CurrencySummary{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+	}
+	sum, err := s.Get(ctx, periodStr)
+	if err != nil {
+		return period.Period{}, CurrencySummary{}, err
+	}
+	return sum.Period, currencyOf(sum, currency), nil
+}
+
 // entries groups what was registered in a period.
 type entries struct {
 	incomes  []income.Income
@@ -208,11 +229,12 @@ type builder struct {
 	currency   money.Currency
 	categories map[string]category.Category
 
-	income     IncomeTotals
-	byCategory map[string]*CategoryTotal
-	byGroup    map[category.Group]money.Money
-	byTag      map[string]*TagTotal
-	byItem     map[string]*ItemTotal
+	income         IncomeTotals
+	byCategory     map[string]*CategoryTotal
+	byContribution map[string]*ContributionTotal
+	byGroup        map[category.Group]money.Money
+	byTag          map[string]*TagTotal
+	byItem         map[string]*ItemTotal
 
 	committed, discretionary, exchanged, spent money.Money
 	real                                       *money.Money
@@ -221,17 +243,18 @@ type builder struct {
 func newBuilder(c money.Currency, categories map[string]category.Category) *builder {
 	zero := money.Zero(c)
 	return &builder{
-		currency:      c,
-		categories:    categories,
-		income:        IncomeTotals{Salary: zero, Exchange: zero, Extra: zero, Total: zero},
-		byCategory:    map[string]*CategoryTotal{},
-		byGroup:       map[category.Group]money.Money{},
-		byTag:         map[string]*TagTotal{},
-		byItem:        map[string]*ItemTotal{},
-		committed:     zero,
-		discretionary: zero,
-		exchanged:     zero,
-		spent:         zero,
+		currency:       c,
+		categories:     categories,
+		income:         IncomeTotals{Salary: zero, Exchange: zero, Extra: zero, Total: zero},
+		byCategory:     map[string]*CategoryTotal{},
+		byContribution: map[string]*ContributionTotal{},
+		byGroup:        map[category.Group]money.Money{},
+		byTag:          map[string]*TagTotal{},
+		byItem:         map[string]*ItemTotal{},
+		committed:      zero,
+		discretionary:  zero,
+		exchanged:      zero,
+		spent:          zero,
 	}
 }
 
@@ -244,8 +267,13 @@ func (b *builder) addIncome(in income.Income) {
 	case income.KindExtra:
 		b.income.Extra = add(b.income.Extra, in.Amount)
 		if in.CategoryID != "" {
-			ct := b.category(in.CategoryID)
-			ct.Contributed = add(ct.Contributed, in.Amount)
+			ct := b.byContribution[in.CategoryID]
+			if ct == nil {
+				ct = &ContributionTotal{Category: b.lookup(in.CategoryID), Amount: money.Zero(b.currency)}
+				b.byContribution[in.CategoryID] = ct
+			}
+			ct.Amount = add(ct.Amount, in.Amount)
+			ct.Count++
 		}
 	}
 	b.income.Total = add(b.income.Total, in.Amount)
@@ -309,15 +337,18 @@ func (b *builder) setBudget(bud budget.Budget) {
 func (b *builder) category(id string) *CategoryTotal {
 	ct := b.byCategory[id]
 	if ct == nil {
-		c, ok := b.categories[id]
-		if !ok {
-			c = category.Category{ID: id, Name: id, Group: category.GroupOther}
-		}
-		zero := money.Zero(b.currency)
-		ct = &CategoryTotal{Category: c, Contributed: zero, Spent: zero}
+		ct = &CategoryTotal{Category: b.lookup(id), Spent: money.Zero(b.currency)}
 		b.byCategory[id] = ct
 	}
 	return ct
+}
+
+// lookup returns the category from the catalog, or a placeholder if it is unknown.
+func (b *builder) lookup(id string) category.Category {
+	if c, ok := b.categories[id]; ok {
+		return c
+	}
+	return category.Category{ID: id, Name: id, Group: category.GroupOther}
 }
 
 func (b *builder) result() CurrencySummary {
@@ -350,6 +381,13 @@ func (b *builder) result() CurrencySummary {
 	}
 	slices.SortFunc(cs.Categories, func(x, y CategoryTotal) int {
 		return cmp.Or(cmp.Compare(y.Spent.Amount(), x.Spent.Amount()), cmp.Compare(x.Category.Name, y.Category.Name))
+	})
+
+	for _, ct := range b.byContribution {
+		cs.Contributions = append(cs.Contributions, *ct)
+	}
+	slices.SortFunc(cs.Contributions, func(x, y ContributionTotal) int {
+		return cmp.Or(cmp.Compare(y.Amount.Amount(), x.Amount.Amount()), cmp.Compare(x.Category.Name, y.Category.Name))
 	})
 
 	for g, spent := range b.byGroup {

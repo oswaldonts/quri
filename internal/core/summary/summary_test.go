@@ -95,13 +95,16 @@ func TestBuild(t *testing.T) {
 	}
 	check("PEN difference", *pen.Difference, "6.00")
 
-	// Categories by amount spent; the contribution is attached to Créditos.
+	// Categories by amount spent; the contribution to Créditos has its own section.
 	if first := pen.Categories[0]; first.Category.Name != "Seguro médico" {
 		t.Errorf("top category = %s, want Seguro médico", first.Category.Name)
 	}
+	if len(pen.Contributions) != 1 || pen.Contributions[0].Category.ID != "loans" || pen.Contributions[0].Count != 1 {
+		t.Fatalf("contributions = %+v, want one to Créditos", pen.Contributions)
+	}
+	check("Créditos contribution", pen.Contributions[0].Amount, "108.00")
 	for _, ct := range pen.Categories {
 		if ct.Category.ID == "loans" {
-			check("Créditos contributed", ct.Contributed, "108.00")
 			check("Créditos spent", ct.Spent, "462.00")
 		}
 		if ct.Category.ID == "market" && ct.Count != 4 {
@@ -201,5 +204,26 @@ func TestBuildBudgets(t *testing.T) {
 	}
 	if pen.Budgeted == nil || pen.Budgeted.String() != "110.00" {
 		t.Errorf("PEN budgeted = %v, want 110.00", pen.Budgeted)
+	}
+}
+
+func TestContributionWithoutExpensesIsNotACategory(t *testing.T) {
+	incomes := []income.Income{{Kind: income.KindExtra, Amount: m(t, "118.00", money.PEN), CategoryID: "loans"}}
+	s := build(july, entries{incomes: incomes}, catalog)
+	pen := s.Currencies[0]
+
+	if len(pen.Categories) != 0 {
+		t.Errorf("categories = %+v, want none: a contribution is not an expense", pen.Categories)
+	}
+	if len(pen.Contributions) != 1 || pen.Contributions[0].Amount.String() != "118.00" {
+		t.Errorf("contributions = %+v", pen.Contributions)
+	}
+}
+
+func TestCurrencyOfEmpty(t *testing.T) {
+	empty := currencyOf(Summary{}, money.USD)
+	if empty.Currency != money.USD || empty.Spent.String() != "0.00" || empty.Committed.String() != "0.00" ||
+		empty.Income.Total.String() != "0.00" || empty.Available.String() != "0.00" {
+		t.Errorf("empty block = %+v, want every amount 0.00 in USD", empty)
 	}
 }

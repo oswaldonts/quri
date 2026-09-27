@@ -97,13 +97,7 @@ func currencyOf(s Summary, c money.Currency) CurrencySummary {
 			return cs
 		}
 	}
-	zero := money.Zero(c)
-	return CurrencySummary{
-		Currency:  c,
-		Income:    IncomeTotals{Salary: zero, Exchange: zero, Extra: zero, Total: zero},
-		Spent:     zero,
-		Available: zero,
-	}
+	return newBuilder(c, nil).result()
 }
 
 // buildTrends is pure: it only combines the monthly summaries.

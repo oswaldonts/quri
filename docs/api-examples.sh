@@ -91,10 +91,14 @@ section "Available: how much is left"
 section "Summary"
 "${CURL[@]}" "$API/periods/$P/summary" | jq '.currencies[] | {
   currency, income: .income.total, spent, available, real, difference, budgeted,
+  contributions: [.contributions[] | "\(.name): \(.amount)"],
   categories: [.categories[] | "\(.name): \(.spent)\(if .budget then " / \(.budget) (queda \(.remaining))" else "" end)"],
   tags: [.tags[] | "\(.tag): \(.spent)"],
   top_items: [.top_items[] | "\(.description): \(.spent)"]
 }'
+
+section "Summary of one currency"
+"${CURL[@]}" "$API/periods/$P/summary/PEN" | jq -c '{currency, available, contributions: [.contributions[] | "\(.name): \(.amount)"]}'
 
 section "Trends"
 "${CURL[@]}" "$API/trends?from=2026-06&to=$P&currency=PEN" | jq -c '{

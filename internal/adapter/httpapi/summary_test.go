@@ -42,8 +42,18 @@ func TestSummary(t *testing.T) {
 		t.Errorf("PEN = total %s spent %s available %s real %s difference %s",
 			pen.Income.Total, pen.Spent, pen.Available, pen.Real, pen.Difference)
 	}
-	if pen.Categories[0].ID != "loans" || pen.Categories[0].Contributed != "108.00" {
-		t.Errorf("top PEN category = %+v, want Créditos with the contribution", pen.Categories[0])
+	if pen.Categories[0].ID != "loans" || pen.Categories[0].Spent != "462.00" {
+		t.Errorf("top PEN category = %+v, want Créditos with 462.00 spent", pen.Categories[0])
+	}
+	if len(pen.Contributions) != 1 || pen.Contributions[0].CategoryID != "loans" || pen.Contributions[0].Amount != "108.00" {
+		t.Errorf("contributions = %+v, want 108.00 to Créditos", pen.Contributions)
+	}
+
+	// The same block, alone.
+	var only PeriodCurrencySummary
+	decode(t, send(h, http.MethodGet, "/periods/2026-07/summary/PEN", ""), &only)
+	if only.Period != "2026-07" || only.Currency != "PEN" || only.Available != pen.Available || len(only.Contributions) != 1 {
+		t.Errorf("summary/PEN = %+v", only)
 	}
 	if len(pen.Tags) != 2 || pen.Tags[0].Tag != "lácteos" || pen.Tags[1].Tag != "dulces" {
 		t.Errorf("PEN tags = %+v, want lácteos (37) then dulces (27)", pen.Tags)
@@ -63,4 +73,15 @@ func TestSummaryEmptyAndInvalid(t *testing.T) {
 		t.Errorf("empty period: %d currencies, want 0", len(s.Currencies))
 	}
 	assertProblem(t, send(h, http.MethodGet, "/periods/2030-1/summary", ""), http.StatusUnprocessableEntity)
+}
+
+func TestCurrencySummaryWithoutActivity(t *testing.T) {
+	h := newTestRouter(t)
+	var s PeriodCurrencySummary
+	decode(t, send(h, http.MethodGet, "/periods/2030-01/summary/ARS", ""), &s)
+	if s.Currency != "ARS" || s.Spent != "0.00" || s.Available != "0.00" || s.Income.Total != "0.00" ||
+		len(s.Categories) != 0 || s.Real != "" {
+		t.Errorf("empty ARS summary = %+v", s)
+	}
+	assertProblem(t, send(h, http.MethodGet, "/periods/2030-01/summary/EUR", ""), http.StatusUnprocessableEntity)
 }
