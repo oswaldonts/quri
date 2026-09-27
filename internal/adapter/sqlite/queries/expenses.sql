@@ -23,3 +23,26 @@ FROM expense_tags
 JOIN expenses ON expenses.id = expense_tags.expense_id
 WHERE expenses.period = ?
 ORDER BY expense_tags.expense_id, expense_tags.tag;
+
+-- name: GetExpense :one
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at
+FROM expenses
+WHERE id = ?;
+
+-- name: ListExpenseTags :many
+SELECT tag FROM expense_tags WHERE expense_id = ? ORDER BY tag;
+
+-- name: UpdateExpense :execrows
+UPDATE expenses
+SET category_id = ?, currency = ?, amount_minor = ?, description = ?, spent_on = ?
+WHERE id = ?;
+
+-- name: DeleteExpenseTags :exec
+DELETE FROM expense_tags WHERE expense_id = ?;
+
+-- Tags go away through ON DELETE CASCADE.
+-- name: DeleteExpense :execrows
+DELETE FROM expenses WHERE id = ?;
+
+-- name: DeleteExchangeExpense :exec
+DELETE FROM expenses WHERE exchange_id = ?;

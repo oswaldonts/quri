@@ -13,8 +13,12 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
 
-// ErrInvalidInput wraps every validation error.
-var ErrInvalidInput = errors.New("invalid input")
+var (
+	// ErrInvalidInput wraps every validation error.
+	ErrInvalidInput = errors.New("invalid input")
+	// ErrNotFound means the currency has no balance in the period.
+	ErrNotFound = errors.New("balance not found")
+)
 
 // Balance is the real money in one currency at the end of a period.
 type Balance struct {
@@ -29,6 +33,8 @@ type Repository interface {
 	Save(ctx context.Context, b Balance) error
 	// ListByPeriod returns the balances of the period ordered by currency.
 	ListByPeriod(ctx context.Context, p period.Period) ([]Balance, error)
+	// Delete removes the balance; it returns ErrNotFound if there is none.
+	Delete(ctx context.Context, p period.Period, c money.Currency) error
 }
 
 // Service holds the balance use cases.
@@ -78,6 +84,19 @@ func (s *Service) List(ctx context.Context, periodStr string) ([]Balance, error)
 		return nil, invalid(err)
 	}
 	return s.repo.ListByPeriod(ctx, p)
+}
+
+// Delete removes the real balance of a currency in a period.
+func (s *Service) Delete(ctx context.Context, periodStr, currencyStr string) error {
+	p, err := period.Parse(periodStr)
+	if err != nil {
+		return invalid(err)
+	}
+	currency, err := money.ParseCurrency(currencyStr)
+	if err != nil {
+		return invalid(err)
+	}
+	return s.repo.Delete(ctx, p, currency)
 }
 
 func invalid(err error) error {

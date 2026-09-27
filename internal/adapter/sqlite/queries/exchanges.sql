@@ -16,3 +16,19 @@ INSERT INTO exchanges (
     rate_scaled, description, exchanged_on, income_id, created_at
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: GetExchange :one
+SELECT id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
+       rate_scaled, description, exchanged_on, income_id, created_at
+FROM exchanges
+WHERE id = ?;
+
+-- name: ListExchangesByPeriod :many
+SELECT id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
+       rate_scaled, description, exchanged_on, income_id, created_at
+FROM exchanges
+WHERE period = ?
+ORDER BY exchanged_on, created_at;
+
+-- name: DeleteExchange :exec
+DELETE FROM exchanges WHERE id = ?;

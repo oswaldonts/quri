@@ -9,6 +9,23 @@ import (
 	"context"
 )
 
+const deleteBalance = `-- name: DeleteBalance :execrows
+DELETE FROM balances WHERE period = ? AND currency = ?
+`
+
+type DeleteBalanceParams struct {
+	Period   string
+	Currency string
+}
+
+func (q *Queries) DeleteBalance(ctx context.Context, arg DeleteBalanceParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteBalance, arg.Period, arg.Currency)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const listBalancesByPeriod = `-- name: ListBalancesByPeriod :many
 SELECT period, currency, amount_minor, updated_at
 FROM balances

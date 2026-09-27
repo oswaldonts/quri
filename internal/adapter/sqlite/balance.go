@@ -58,3 +58,9 @@ func (r *BalanceRepository) ListByPeriod(ctx context.Context, p period.Period) (
 	}
 	return out, nil
 }
+
+// Delete removes the balance of a currency in a period.
+func (r *BalanceRepository) Delete(ctx context.Context, p period.Period, c money.Currency) error {
+	n, err := r.q.DeleteBalance(ctx, sqlitedb.DeleteBalanceParams{Period: p.String(), Currency: string(c)})
+	return notFoundIfNone(n, err, balance.ErrNotFound, fmt.Sprintf("%s %s", p, c))
+}

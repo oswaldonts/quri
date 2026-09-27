@@ -26,6 +26,35 @@ func (f *fakeRepo) Save(_ context.Context, in Income) error {
 	return nil
 }
 
+func (f *fakeRepo) Get(_ context.Context, id string) (Income, error) {
+	for _, in := range f.saved {
+		if in.ID == id {
+			return in, nil
+		}
+	}
+	return Income{}, ErrNotFound
+}
+
+func (f *fakeRepo) Update(_ context.Context, in Income) error {
+	for i := range f.saved {
+		if f.saved[i].ID == in.ID {
+			f.saved[i] = in
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+func (f *fakeRepo) Delete(_ context.Context, id string) error {
+	for i := range f.saved {
+		if f.saved[i].ID == id {
+			f.saved = append(f.saved[:i], f.saved[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
 func (f *fakeRepo) ListByPeriod(_ context.Context, p period.Period) ([]Income, error) {
 	var out []Income
 	for _, in := range f.saved {
@@ -168,4 +197,78 @@ func TestRegisterContribution(t *testing.T) {
 	if _, err := newTestService(repo).List(context.Background(), "julio"); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("List bad period: err = %v, want %v", err, ErrInvalidInput)
 	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func TestUpdate(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeRepo{}
+	svc := newTestService(repo)
+	created, err := svc.Register(ctx, validInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.Update(ctx, "2026-07", created.ID, UpdateInput{Amount: ptr("1350.50"), Description: ptr("Sueldo corregido")})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got.Amount.String() != "1350.50" || got.Description != "Sueldo corregido" || got.Kind != KindSalary ||
+		got.ID != created.ID || !got.CreatedAt.Equal(created.CreatedAt) {
+		t.Errorf("Update = %+v", got)
+	}
+	if repo.saved[0].Amount.String() != "1350.50" {
+		t.Error("the update was not stored")
+	}
+
+	// Turning it into a contribution: kind and category change together.
+	got, err = svc.Update(ctx, "2026-07", created.ID, UpdateInput{Kind: ptr("extra"), CategoryID: ptr("loans")})
+	if err != nil || got.CategoryID != "loans" {
+		t.Fatalf("Update to contribution = %+v, %v", got, err)
+	}
+	// Back to salary while keeping the category is invalid; clearing it works.
+	if _, err := svc.Update(ctx, "2026-07", created.ID, UpdateInput{Kind: ptr("salary")}); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("salary with category: err = %v, want %v", err, ErrInvalidInput)
+	}
+	if got, err := svc.Update(ctx, "2026-07", created.ID, UpdateInput{Kind: ptr("salary"), CategoryID: ptr("")}); err != nil || got.CategoryID != "" {
+		t.Errorf("salary without category = %+v, %v", got, err)
+	}
+}
+
+func TestUpdateAndDeleteErrors(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeRepo{saved: []Income{
+		{ID: "salary", Period: mustPeriod(t, "2026-07"), Kind: KindSalary},
+		{ID: "from-exchange", Period: mustPeriod(t, "2026-07"), Kind: KindExchange},
+	}}
+	svc := newTestService(repo)
+
+	if _, err := svc.Update(ctx, "2026-07", "nope", UpdateInput{}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown id: err = %v, want %v", err, ErrNotFound)
+	}
+	if _, err := svc.Update(ctx, "2026-08", "salary", UpdateInput{}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("other period: err = %v, want %v", err, ErrNotFound)
+	}
+	if _, err := svc.Update(ctx, "2026-07", "from-exchange", UpdateInput{}); !errors.Is(err, ErrManagedByExchange) {
+		t.Errorf("exchange income: err = %v, want %v", err, ErrManagedByExchange)
+	}
+	if err := svc.Delete(ctx, "2026-07", "from-exchange"); !errors.Is(err, ErrManagedByExchange) {
+		t.Errorf("delete exchange income: err = %v, want %v", err, ErrManagedByExchange)
+	}
+	if err := svc.Delete(ctx, "julio", "salary"); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("bad period: err = %v, want %v", err, ErrInvalidInput)
+	}
+	if err := svc.Delete(ctx, "2026-07", "salary"); err != nil || len(repo.saved) != 1 {
+		t.Errorf("Delete = %v, remaining %d; want nil and 1", err, len(repo.saved))
+	}
+}
+
+func mustPeriod(t *testing.T, s string) period.Period {
+	t.Helper()
+	p, err := period.Parse(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

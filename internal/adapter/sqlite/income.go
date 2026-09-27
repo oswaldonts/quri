@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -93,4 +94,47 @@ func toIncome(row sqlitedb.Income) (income.Income, error) {
 		ReceivedOn:  receivedOn,
 		CreatedAt:   createdAt,
 	}, nil
+}
+
+// Get returns income.ErrNotFound if no income has the ID.
+func (r *IncomeRepository) Get(ctx context.Context, id string) (income.Income, error) {
+	row, err := r.q.GetIncome(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return income.Income{}, fmt.Errorf("%w: %q", income.ErrNotFound, id)
+	}
+	if err != nil {
+		return income.Income{}, err
+	}
+	return toIncome(row)
+}
+
+// Update replaces the editable fields of an income.
+func (r *IncomeRepository) Update(ctx context.Context, in income.Income) error {
+	n, err := r.q.UpdateIncome(ctx, sqlitedb.UpdateIncomeParams{
+		Currency:    string(in.Amount.Currency()),
+		AmountMinor: in.Amount.Amount(),
+		Kind:        string(in.Kind),
+		Description: in.Description,
+		ReceivedOn:  in.ReceivedOn.Format(time.DateOnly),
+		CategoryID:  sql.NullString{String: in.CategoryID, Valid: in.CategoryID != ""},
+		ID:          in.ID,
+	})
+	return notFoundIfNone(n, err, income.ErrNotFound, in.ID)
+}
+
+// Delete removes an income.
+func (r *IncomeRepository) Delete(ctx context.Context, id string) error {
+	n, err := r.q.DeleteIncome(ctx, id)
+	return notFoundIfNone(n, err, income.ErrNotFound, id)
+}
+
+// notFoundIfNone turns "no row affected" into the given not-found error.
+func notFoundIfNone(rows int64, err error, notFound error, id string) error {
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: %q", notFound, id)
+	}
+	return nil
 }

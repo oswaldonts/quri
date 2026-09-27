@@ -29,6 +29,60 @@ func (q *Queries) CategoryHasEntries(ctx context.Context, arg CategoryHasEntries
 	return has_entries, err
 }
 
+const deleteExchangeExpense = `-- name: DeleteExchangeExpense :exec
+DELETE FROM expenses WHERE exchange_id = ?
+`
+
+func (q *Queries) DeleteExchangeExpense(ctx context.Context, exchangeID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, deleteExchangeExpense, exchangeID)
+	return err
+}
+
+const deleteExpense = `-- name: DeleteExpense :execrows
+DELETE FROM expenses WHERE id = ?
+`
+
+// Tags go away through ON DELETE CASCADE.
+func (q *Queries) DeleteExpense(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteExpense, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteExpenseTags = `-- name: DeleteExpenseTags :exec
+DELETE FROM expense_tags WHERE expense_id = ?
+`
+
+func (q *Queries) DeleteExpenseTags(ctx context.Context, expenseID string) error {
+	_, err := q.db.ExecContext(ctx, deleteExpenseTags, expenseID)
+	return err
+}
+
+const getExpense = `-- name: GetExpense :one
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at
+FROM expenses
+WHERE id = ?
+`
+
+func (q *Queries) GetExpense(ctx context.Context, id string) (Expense, error) {
+	row := q.db.QueryRowContext(ctx, getExpense, id)
+	var i Expense
+	err := row.Scan(
+		&i.ID,
+		&i.Period,
+		&i.CategoryID,
+		&i.Currency,
+		&i.AmountMinor,
+		&i.Description,
+		&i.SpentOn,
+		&i.ExchangeID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertExpense = `-- name: InsertExpense :exec
 INSERT INTO expenses (id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -73,6 +127,33 @@ type InsertExpenseTagParams struct {
 func (q *Queries) InsertExpenseTag(ctx context.Context, arg InsertExpenseTagParams) error {
 	_, err := q.db.ExecContext(ctx, insertExpenseTag, arg.ExpenseID, arg.Tag)
 	return err
+}
+
+const listExpenseTags = `-- name: ListExpenseTags :many
+SELECT tag FROM expense_tags WHERE expense_id = ? ORDER BY tag
+`
+
+func (q *Queries) ListExpenseTags(ctx context.Context, expenseID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listExpenseTags, expenseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		items = append(items, tag)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listExpenseTagsByPeriod = `-- name: ListExpenseTagsByPeriod :many
@@ -144,4 +225,34 @@ func (q *Queries) ListExpensesByPeriod(ctx context.Context, period string) ([]Ex
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateExpense = `-- name: UpdateExpense :execrows
+UPDATE expenses
+SET category_id = ?, currency = ?, amount_minor = ?, description = ?, spent_on = ?
+WHERE id = ?
+`
+
+type UpdateExpenseParams struct {
+	CategoryID  string
+	Currency    string
+	AmountMinor int64
+	Description string
+	SpentOn     string
+	ID          string
+}
+
+func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateExpense,
+		arg.CategoryID,
+		arg.Currency,
+		arg.AmountMinor,
+		arg.Description,
+		arg.SpentOn,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

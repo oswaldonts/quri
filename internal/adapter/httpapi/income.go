@@ -15,6 +15,21 @@ import (
 type IncomeService interface {
 	Register(ctx context.Context, in income.RegisterInput) (income.Income, error)
 	List(ctx context.Context, period string) ([]income.Income, error)
+	Update(ctx context.Context, period, id string, in income.UpdateInput) (income.Income, error)
+	Delete(ctx context.Context, period, id string) error
+}
+
+// UpdateIncomeInput is the request of PATCH /periods/{period}/incomes/{id}: only the sent fields change.
+type UpdateIncomeInput struct {
+	EntryParams
+	Body struct {
+		Currency    *CurrencyCode `json:"currency,omitempty"`
+		Amount      *string       `json:"amount,omitempty" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$"`
+		Kind        *string       `json:"kind,omitempty" enum:"salary,extra"`
+		Description *string       `json:"description,omitempty" maxLength:"200"`
+		ReceivedOn  *string       `json:"received_on,omitempty" format:"date"`
+		CategoryID  *string       `json:"category_id,omitempty" doc:"Contribution category; an empty string removes it."`
+	}
 }
 
 // RegisterIncomeInput is the request of POST /periods/{period}/incomes.
@@ -115,4 +130,39 @@ func registerIncomes(api huma.API, incomes IncomeService) {
 		}
 		return out, nil
 	})
+}
+
+func registerIncomeEdits(api huma.API, incomes IncomeService) {
+	huma.Register(api, huma.Operation{
+		OperationID: "update-income",
+		Method:      http.MethodPatch,
+		Path:        "/periods/{period}/incomes/{id}",
+		Summary:     "Update an income",
+		Description: "Only the sent fields change; the result is validated like a new income. " +
+			"Incomes created by exchanges can't be modified (409): delete the exchange instead.",
+		Tags:   []string{tagIncomes},
+		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *UpdateIncomeInput) (*IncomeOutput, error) {
+		inc, err := incomes.Update(ctx, in.Period, in.ID, income.UpdateInput{
+			Currency:    (*string)(in.Body.Currency),
+			Amount:      in.Body.Amount,
+			Kind:        in.Body.Kind,
+			Description: in.Body.Description,
+			ReceivedOn:  in.Body.ReceivedOn,
+			CategoryID:  in.Body.CategoryID,
+		})
+		if err != nil {
+			return nil, toHTTPError(ctx, "update income", err)
+		}
+		return &IncomeOutput{Body: toIncome(inc)}, nil
+	})
+
+	huma.Register(api, deleteOperation("delete-income", "/periods/{period}/incomes/{id}", "Delete an income",
+		"Incomes created by exchanges can't be deleted (409): delete the exchange instead.", tagIncomes),
+		func(ctx context.Context, in *EntryParams) (*struct{}, error) {
+			if err := incomes.Delete(ctx, in.Period, in.ID); err != nil {
+				return nil, toHTTPError(ctx, "delete income", err)
+			}
+			return nil, nil
+		})
 }

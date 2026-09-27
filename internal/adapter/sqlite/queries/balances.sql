@@ -10,3 +10,6 @@ SELECT period, currency, amount_minor, updated_at
 FROM balances
 WHERE period = ?
 ORDER BY currency;
+
+-- name: DeleteBalance :execrows
+DELETE FROM balances WHERE period = ? AND currency = ?;

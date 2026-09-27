@@ -25,6 +25,35 @@ func (f *fakeRepo) SaveAll(_ context.Context, es []Expense) error {
 	return nil
 }
 
+func (f *fakeRepo) Get(_ context.Context, id string) (Expense, error) {
+	for _, e := range f.saved {
+		if e.ID == id {
+			return e, nil
+		}
+	}
+	return Expense{}, ErrNotFound
+}
+
+func (f *fakeRepo) Update(_ context.Context, e Expense) error {
+	for i := range f.saved {
+		if f.saved[i].ID == e.ID {
+			f.saved[i] = e
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+func (f *fakeRepo) Delete(_ context.Context, id string) error {
+	for i := range f.saved {
+		if f.saved[i].ID == id {
+			f.saved = append(f.saved[:i], f.saved[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
 func (f *fakeRepo) ListByPeriod(_ context.Context, p period.Period) ([]Expense, error) {
 	var out []Expense
 	for _, e := range f.saved {
@@ -261,5 +290,68 @@ func TestListFilters(t *testing.T) {
 	}
 	if n := count(Filter{CategoryID: "leisure", Tag: "mercado"}); n != 0 {
 		t.Errorf("leisure + mercado = %d, want 0", n)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func TestUpdateAndDelete(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeRepo{}
+	svc := newTestService(repo)
+	in := validInput()
+	in.Tags = []string{"dulces"}
+	created, err := svc.Register(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.Update(ctx, "2026-07", created.ID, UpdateInput{Amount: ptr("54.50"), Tags: ptr([]string{"Lácteos"})})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got.Amount.String() != "54.50" || !slices.Equal(got.Tags, []string{"lácteos"}) ||
+		got.Description != "Mercado semanal" || got.ID != created.ID {
+		t.Errorf("Update = %+v", got)
+	}
+	// Tags: nil keeps them, an empty list clears them.
+	if got, _ := svc.Update(ctx, "2026-07", created.ID, UpdateInput{Description: ptr("x")}); !slices.Equal(got.Tags, []string{"lácteos"}) {
+		t.Errorf("tags after update without tags = %q", got.Tags)
+	}
+	if got, _ := svc.Update(ctx, "2026-07", created.ID, UpdateInput{Tags: ptr([]string{})}); len(got.Tags) != 0 {
+		t.Errorf("tags after clearing = %q", got.Tags)
+	}
+
+	if _, err := svc.Update(ctx, "2026-07", created.ID, UpdateInput{CategoryID: ptr("exchange")}); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("move to system category: err = %v, want %v", err, ErrInvalidInput)
+	}
+	if err := svc.Delete(ctx, "2026-07", created.ID); err != nil || len(repo.saved) != 0 {
+		t.Errorf("Delete = %v, remaining %d", err, len(repo.saved))
+	}
+}
+
+func TestUpdateAndDeleteErrors(t *testing.T) {
+	ctx := context.Background()
+	july, _ := period.Parse("2026-07")
+	repo := &fakeRepo{saved: []Expense{
+		{ID: "normal", Period: july, CategoryID: "market"},
+		{ID: "from-exchange", Period: july, CategoryID: "exchange", ExchangeID: "ex-1"},
+	}}
+	svc := newTestService(repo)
+
+	if _, err := svc.Update(ctx, "2026-07", "nope", UpdateInput{}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown id: err = %v, want %v", err, ErrNotFound)
+	}
+	if err := svc.Delete(ctx, "2026-08", "normal"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("other period: err = %v, want %v", err, ErrNotFound)
+	}
+	if _, err := svc.Update(ctx, "2026-07", "from-exchange", UpdateInput{}); !errors.Is(err, ErrManagedByExchange) {
+		t.Errorf("exchange expense: err = %v, want %v", err, ErrManagedByExchange)
+	}
+	if err := svc.Delete(ctx, "2026-07", "from-exchange"); !errors.Is(err, ErrManagedByExchange) {
+		t.Errorf("delete exchange expense: err = %v, want %v", err, ErrManagedByExchange)
+	}
+	if err := svc.Delete(ctx, "julio", "normal"); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("bad period: err = %v, want %v", err, ErrInvalidInput)
 	}
 }

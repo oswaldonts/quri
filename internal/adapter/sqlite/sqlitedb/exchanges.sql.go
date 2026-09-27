@@ -9,6 +9,41 @@ import (
 	"context"
 )
 
+const deleteExchange = `-- name: DeleteExchange :exec
+DELETE FROM exchanges WHERE id = ?
+`
+
+func (q *Queries) DeleteExchange(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteExchange, id)
+	return err
+}
+
+const getExchange = `-- name: GetExchange :one
+SELECT id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
+       rate_scaled, description, exchanged_on, income_id, created_at
+FROM exchanges
+WHERE id = ?
+`
+
+func (q *Queries) GetExchange(ctx context.Context, id string) (Exchange, error) {
+	row := q.db.QueryRowContext(ctx, getExchange, id)
+	var i Exchange
+	err := row.Scan(
+		&i.ID,
+		&i.Period,
+		&i.FromCurrency,
+		&i.FromAmountMinor,
+		&i.ToCurrency,
+		&i.ToAmountMinor,
+		&i.RateScaled,
+		&i.Description,
+		&i.ExchangedOn,
+		&i.IncomeID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getRate = `-- name: GetRate :one
 SELECT period, from_currency, to_currency, rate_scaled, updated_at
 FROM rates
@@ -71,6 +106,49 @@ func (q *Queries) InsertExchange(ctx context.Context, arg InsertExchangeParams) 
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const listExchangesByPeriod = `-- name: ListExchangesByPeriod :many
+SELECT id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
+       rate_scaled, description, exchanged_on, income_id, created_at
+FROM exchanges
+WHERE period = ?
+ORDER BY exchanged_on, created_at
+`
+
+func (q *Queries) ListExchangesByPeriod(ctx context.Context, period string) ([]Exchange, error) {
+	rows, err := q.db.QueryContext(ctx, listExchangesByPeriod, period)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Exchange{}
+	for rows.Next() {
+		var i Exchange
+		if err := rows.Scan(
+			&i.ID,
+			&i.Period,
+			&i.FromCurrency,
+			&i.FromAmountMinor,
+			&i.ToCurrency,
+			&i.ToAmountMinor,
+			&i.RateScaled,
+			&i.Description,
+			&i.ExchangedOn,
+			&i.IncomeID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertRate = `-- name: UpsertRate :exec

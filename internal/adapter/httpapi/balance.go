@@ -14,6 +14,13 @@ import (
 type BalanceService interface {
 	Set(ctx context.Context, in balance.SetInput) (balance.Balance, error)
 	List(ctx context.Context, period string) ([]balance.Balance, error)
+	Delete(ctx context.Context, period, currency string) error
+}
+
+// BalanceParams identify the balance of a currency in a period.
+type BalanceParams struct {
+	PeriodParam
+	Currency CurrencyCode `path:"currency"`
 }
 
 // SetBalanceInput is the request of PUT /periods/{period}/balances/{currency}.
@@ -53,6 +60,15 @@ type BalanceListOutput struct {
 }
 
 func registerBalances(api huma.API, balances BalanceService) {
+	huma.Register(api, deleteOperation("delete-balance", "/periods/{period}/balances/{currency}",
+		"Delete the real balance of a currency", "", tagBalances),
+		func(ctx context.Context, in *BalanceParams) (*struct{}, error) {
+			if err := balances.Delete(ctx, in.Period, string(in.Currency)); err != nil {
+				return nil, toHTTPError(ctx, "delete balance", err)
+			}
+			return nil, nil
+		})
+
 	huma.Register(api, huma.Operation{
 		OperationID: "set-balance",
 		Method:      http.MethodPut,

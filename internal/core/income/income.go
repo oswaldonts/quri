@@ -10,9 +10,16 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
 
-// ErrInvalidInput wraps every validation error, so callers can tell a bad request
-// apart from an internal failure with errors.Is(err, ErrInvalidInput).
-var ErrInvalidInput = errors.New("invalid input")
+var (
+	// ErrInvalidInput wraps every validation error, so callers can tell a bad request
+	// apart from an internal failure with errors.Is(err, ErrInvalidInput).
+	ErrInvalidInput = errors.New("invalid input")
+	// ErrNotFound means no income of the period has the given ID.
+	ErrNotFound = errors.New("income not found")
+	// ErrManagedByExchange means the income was created by an exchange and can only
+	// change through it.
+	ErrManagedByExchange = errors.New("income is managed by its exchange")
+)
 
 // Kind classifies an income.
 type Kind string

@@ -127,3 +127,100 @@ func (r *ExchangeRepository) Save(ctx context.Context, e exchange.Exchange, in i
 	}
 	return tx.Commit()
 }
+
+// Get returns exchange.ErrNotFound if no exchange has the ID.
+func (r *ExchangeRepository) Get(ctx context.Context, id string) (exchange.Exchange, error) {
+	row, err := sqlitedb.New(r.db).GetExchange(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return exchange.Exchange{}, fmt.Errorf("%w: %q", exchange.ErrNotFound, id)
+	}
+	if err != nil {
+		return exchange.Exchange{}, err
+	}
+	return toExchange(row)
+}
+
+// ListByPeriod returns the exchanges of the period ordered by date.
+func (r *ExchangeRepository) ListByPeriod(ctx context.Context, p period.Period) ([]exchange.Exchange, error) {
+	rows, err := sqlitedb.New(r.db).ListExchangesByPeriod(ctx, p.String())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]exchange.Exchange, 0, len(rows))
+	for _, row := range rows {
+		e, err := toExchange(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
+// Delete removes the exchange with its expense and income in one transaction,
+// in the order the foreign keys require.
+func (r *ExchangeRepository) Delete(ctx context.Context, e exchange.Exchange) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlitedb.New(tx)
+	if err := q.DeleteExchangeExpense(ctx, sql.NullString{String: e.ID, Valid: true}); err != nil {
+		return fmt.Errorf("delete expense: %w", err)
+	}
+	if err := q.DeleteExchange(ctx, e.ID); err != nil {
+		return fmt.Errorf("delete exchange: %w", err)
+	}
+	if _, err := q.DeleteIncome(ctx, e.IncomeID); err != nil {
+		return fmt.Errorf("delete income: %w", err)
+	}
+	return tx.Commit()
+}
+
+func toExchange(row sqlitedb.Exchange) (exchange.Exchange, error) {
+	p, err := period.Parse(row.Period)
+	if err != nil {
+		return exchange.Exchange{}, fmt.Errorf("exchange row: %w", err)
+	}
+	fromCurrency, err := money.ParseCurrency(row.FromCurrency)
+	if err != nil {
+		return exchange.Exchange{}, fmt.Errorf("exchange row: %w", err)
+	}
+	from, err := money.New(row.FromAmountMinor, fromCurrency)
+	if err != nil {
+		return exchange.Exchange{}, fmt.Errorf("exchange row: %w", err)
+	}
+	toCurrency, err := money.ParseCurrency(row.ToCurrency)
+	if err != nil {
+		return exchange.Exchange{}, fmt.Errorf("exchange row: %w", err)
+	}
+	to, err := money.New(row.ToAmountMinor, toCurrency)
+	if err != nil {
+		return exchange.Exchange{}, fmt.Errorf("exchange row: %w", err)
+	}
+	rate, err := money.NewRate(row.RateScaled)
+	if err != nil {
+		return exchange.Exchange{}, fmt.Errorf("exchange row: %w", err)
+	}
+	exchangedOn, err := time.Parse(time.DateOnly, row.ExchangedOn)
+	if err != nil {
+		return exchange.Exchange{}, fmt.Errorf("exchange row: %w", err)
+	}
+	createdAt, err := parseTime(row.CreatedAt)
+	if err != nil {
+		return exchange.Exchange{}, fmt.Errorf("exchange row: %w", err)
+	}
+	return exchange.Exchange{
+		ID:          row.ID,
+		Period:      p,
+		From:        from,
+		To:          to,
+		Rate:        rate,
+		Description: row.Description,
+		ExchangedOn: exchangedOn,
+		IncomeID:    row.IncomeID,
+		CreatedAt:   createdAt,
+	}, nil
+}

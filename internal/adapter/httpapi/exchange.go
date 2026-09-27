@@ -18,9 +18,16 @@ type RateManager interface {
 	Rate(ctx context.Context, in exchange.PairInput) (exchange.PeriodRate, error)
 }
 
-// ExchangeRegistrar is what the HTTP layer needs to register exchanges.
-type ExchangeRegistrar interface {
+// ExchangeService is what the HTTP layer needs from the exchange use cases.
+type ExchangeService interface {
 	Register(ctx context.Context, in exchange.RegisterInput) (exchange.Exchange, error)
+	List(ctx context.Context, period string) ([]exchange.Exchange, error)
+	Delete(ctx context.Context, period, id string) error
+}
+
+// ExchangeListOutput is the response of GET /periods/{period}/exchanges.
+type ExchangeListOutput struct {
+	Body []Exchange
 }
 
 // PairParams are the {period} and {pair} path parameters of the rate routes.
@@ -151,7 +158,36 @@ func registerRates(api huma.API, rates RateManager) {
 	})
 }
 
-func registerExchanges(api huma.API, exchanges ExchangeRegistrar) {
+func registerExchanges(api huma.API, exchanges ExchangeService) {
+	huma.Register(api, huma.Operation{
+		OperationID: "list-exchanges",
+		Method:      http.MethodGet,
+		Path:        "/periods/{period}/exchanges",
+		Summary:     "List the exchanges of a period",
+		Tags:        []string{tagExchanges},
+		Errors:      []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *PeriodParam) (*ExchangeListOutput, error) {
+		es, err := exchanges.List(ctx, in.Period)
+		if err != nil {
+			return nil, toHTTPError(ctx, "list exchanges", err)
+		}
+		out := &ExchangeListOutput{Body: make([]Exchange, 0, len(es))}
+		for _, e := range es {
+			out.Body = append(out.Body, toExchange(e))
+		}
+		return out, nil
+	})
+
+	huma.Register(api, deleteOperation("delete-exchange", "/periods/{period}/exchanges/{id}", "Delete an exchange",
+		"Deletes the exchange together with the income and the expense it created, in one transaction. "+
+			"To correct an exchange, delete it and register it again.", tagExchanges),
+		func(ctx context.Context, in *EntryParams) (*struct{}, error) {
+			if err := exchanges.Delete(ctx, in.Period, in.ID); err != nil {
+				return nil, toHTTPError(ctx, "delete exchange", err)
+			}
+			return nil, nil
+		})
+
 	huma.Register(api, huma.Operation{
 		OperationID: "register-exchange",
 		Method:      http.MethodPost,

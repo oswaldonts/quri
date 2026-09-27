@@ -10,6 +10,41 @@ import (
 	"database/sql"
 )
 
+const deleteIncome = `-- name: DeleteIncome :execrows
+DELETE FROM incomes WHERE id = ?
+`
+
+func (q *Queries) DeleteIncome(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteIncome, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const getIncome = `-- name: GetIncome :one
+SELECT id, period, currency, amount_minor, kind, description, received_on, created_at, category_id
+FROM incomes
+WHERE id = ?
+`
+
+func (q *Queries) GetIncome(ctx context.Context, id string) (Income, error) {
+	row := q.db.QueryRowContext(ctx, getIncome, id)
+	var i Income
+	err := row.Scan(
+		&i.ID,
+		&i.Period,
+		&i.Currency,
+		&i.AmountMinor,
+		&i.Kind,
+		&i.Description,
+		&i.ReceivedOn,
+		&i.CreatedAt,
+		&i.CategoryID,
+	)
+	return i, err
+}
+
 const insertIncome = `-- name: InsertIncome :exec
 INSERT INTO incomes (id, period, currency, amount_minor, kind, description, received_on, created_at, category_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -80,4 +115,36 @@ func (q *Queries) ListIncomesByPeriod(ctx context.Context, period string) ([]Inc
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateIncome = `-- name: UpdateIncome :execrows
+UPDATE incomes
+SET currency = ?, amount_minor = ?, kind = ?, description = ?, received_on = ?, category_id = ?
+WHERE id = ?
+`
+
+type UpdateIncomeParams struct {
+	Currency    string
+	AmountMinor int64
+	Kind        string
+	Description string
+	ReceivedOn  string
+	CategoryID  sql.NullString
+	ID          string
+}
+
+func (q *Queries) UpdateIncome(ctx context.Context, arg UpdateIncomeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateIncome,
+		arg.Currency,
+		arg.AmountMinor,
+		arg.Kind,
+		arg.Description,
+		arg.ReceivedOn,
+		arg.CategoryID,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

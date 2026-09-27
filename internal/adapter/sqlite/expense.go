@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -131,4 +132,60 @@ func toExpense(row sqlitedb.Expense) (expense.Expense, error) {
 		ExchangeID:  row.ExchangeID.String, // "" when NULL
 		CreatedAt:   createdAt,
 	}, nil
+}
+
+// Get returns expense.ErrNotFound if no expense has the ID.
+func (r *ExpenseRepository) Get(ctx context.Context, id string) (expense.Expense, error) {
+	row, err := r.q.GetExpense(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return expense.Expense{}, fmt.Errorf("%w: %q", expense.ErrNotFound, id)
+	}
+	if err != nil {
+		return expense.Expense{}, err
+	}
+	e, err := toExpense(row)
+	if err != nil {
+		return expense.Expense{}, err
+	}
+	if e.Tags, err = r.q.ListExpenseTags(ctx, id); err != nil {
+		return expense.Expense{}, err
+	}
+	return e, nil
+}
+
+// Update replaces the editable fields and all the tags of an expense, atomically.
+func (r *ExpenseRepository) Update(ctx context.Context, e expense.Expense) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := r.q.WithTx(tx)
+	n, err := q.UpdateExpense(ctx, sqlitedb.UpdateExpenseParams{
+		CategoryID:  e.CategoryID,
+		Currency:    string(e.Amount.Currency()),
+		AmountMinor: e.Amount.Amount(),
+		Description: e.Description,
+		SpentOn:     e.SpentOn.Format(time.DateOnly),
+		ID:          e.ID,
+	})
+	if err := notFoundIfNone(n, err, expense.ErrNotFound, e.ID); err != nil {
+		return err
+	}
+	if err := q.DeleteExpenseTags(ctx, e.ID); err != nil {
+		return err
+	}
+	for _, tag := range e.Tags {
+		if err := q.InsertExpenseTag(ctx, sqlitedb.InsertExpenseTagParams{ExpenseID: e.ID, Tag: tag}); err != nil {
+			return fmt.Errorf("insert tag %q: %w", tag, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// Delete removes an expense; its tags go away through ON DELETE CASCADE.
+func (r *ExpenseRepository) Delete(ctx context.Context, id string) error {
+	n, err := r.q.DeleteExpense(ctx, id)
+	return notFoundIfNone(n, err, expense.ErrNotFound, id)
 }

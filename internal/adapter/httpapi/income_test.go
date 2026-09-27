@@ -83,6 +83,14 @@ func (failingIncomes) List(context.Context, string) ([]income.Income, error) {
 	return nil, errors.New("connection refused")
 }
 
+func (failingIncomes) Update(context.Context, string, string, income.UpdateInput) (income.Income, error) {
+	return income.Income{}, errors.New("connection refused")
+}
+
+func (failingIncomes) Delete(context.Context, string, string) error {
+	return errors.New("connection refused")
+}
+
 func TestRegisterIncomeInternalError(t *testing.T) {
 	rec := send(NewRouter(Services{Incomes: failingIncomes{}}), http.MethodPost, "/periods/2026-07/incomes", incomeBody)
 

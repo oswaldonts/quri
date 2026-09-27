@@ -19,6 +19,8 @@ var (
 	ErrInvalidInput = errors.New("invalid input")
 	// ErrRateNotFound means no rate was set for the period and currency pair.
 	ErrRateNotFound = errors.New("rate not found")
+	// ErrNotFound means no exchange of the period has the given ID.
+	ErrNotFound = errors.New("exchange not found")
 )
 
 // PeriodRate is the rate chosen for a currency pair in a budget period:

@@ -39,7 +39,7 @@ type Services struct {
 	Balances   BalanceService
 	Summaries  SummaryService
 	Rates      RateManager
-	Exchanges  ExchangeRegistrar
+	Exchanges  ExchangeService
 }
 
 // NewRouter builds the HTTP handler with all routes, middlewares and docs.
@@ -56,8 +56,10 @@ func NewRouter(s Services) http.Handler {
 	registerHealth(api)
 	registerCategories(api, s.Categories)
 	registerIncomes(api, s.Incomes)
+	registerIncomeEdits(api, s.Incomes)
 	registerExpenses(api, s.Expenses)
 	registerExpenseBatch(api, s.Expenses)
+	registerExpenseEdits(api, s.Expenses)
 	registerBalances(api, s.Balances)
 	registerSummary(api, s.Summaries)
 	registerRates(api, s.Rates)

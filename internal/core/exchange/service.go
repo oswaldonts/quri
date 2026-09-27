@@ -31,6 +31,12 @@ type Repository interface {
 	// Save stores the exchange together with the income and the expense it generates,
 	// atomically: either all three are saved or none is.
 	Save(ctx context.Context, e Exchange, in income.Income, out expense.Expense) error
+	// Get returns ErrNotFound if no exchange has the ID.
+	Get(ctx context.Context, id string) (Exchange, error)
+	// ListByPeriod returns the exchanges of the period ordered by date.
+	ListByPeriod(ctx context.Context, p period.Period) ([]Exchange, error)
+	// Delete removes the exchange with its income and expense, atomically.
+	Delete(ctx context.Context, e Exchange) error
 }
 
 // Service holds the rate and exchange use cases.
@@ -185,6 +191,32 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, err
 		return Exchange{}, fmt.Errorf("save exchange: %w", err)
 	}
 	return ex, nil
+}
+
+// List returns the exchanges of a period ordered by date.
+func (s *Service) List(ctx context.Context, periodStr string) ([]Exchange, error) {
+	p, err := period.Parse(periodStr)
+	if err != nil {
+		return nil, invalid(err)
+	}
+	return s.exchanges.ListByPeriod(ctx, p)
+}
+
+// Delete removes an exchange of the period together with the income and the
+// expense it created. To correct an exchange, delete it and register it again.
+func (s *Service) Delete(ctx context.Context, periodStr, id string) error {
+	p, err := period.Parse(periodStr)
+	if err != nil {
+		return invalid(err)
+	}
+	e, err := s.exchanges.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if e.Period != p {
+		return fmt.Errorf("%w: %q in %s", ErrNotFound, id, p)
+	}
+	return s.exchanges.Delete(ctx, e)
 }
 
 func (s *Service) findRate(ctx context.Context, p period.Period, from, to money.Currency) (PeriodRate, error) {

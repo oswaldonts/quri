@@ -20,6 +20,12 @@ const maxDescriptionLength = 200
 // Adapters (in-memory, database...) implement it; the core never imports them.
 type Repository interface {
 	Save(ctx context.Context, in Income) error
+	// Get returns ErrNotFound if no income has the ID.
+	Get(ctx context.Context, id string) (Income, error)
+	// Update replaces the stored income; it returns ErrNotFound if it doesn't exist.
+	Update(ctx context.Context, in Income) error
+	// Delete removes the income; it returns ErrNotFound if it doesn't exist.
+	Delete(ctx context.Context, id string) error
 	// ListByPeriod returns the incomes of the period ordered by date.
 	ListByPeriod(ctx context.Context, p period.Period) ([]Income, error)
 }
@@ -60,6 +66,98 @@ type RegisterInput struct {
 
 // Register validates the input and stores a new income.
 func (s *Service) Register(ctx context.Context, in RegisterInput) (Income, error) {
+	inc, err := s.build(ctx, in)
+	if err != nil {
+		return Income{}, err
+	}
+	if err := s.repo.Save(ctx, inc); err != nil {
+		return Income{}, fmt.Errorf("save income: %w", err)
+	}
+	return inc, nil
+}
+
+// UpdateInput is a partial update: nil fields keep their value. An empty
+// CategoryID removes the contribution.
+type UpdateInput struct {
+	Currency    *string
+	Amount      *string
+	Kind        *string
+	Description *string
+	ReceivedOn  *string
+	CategoryID  *string
+}
+
+// Update changes an income of the period, validating the result like Register.
+// Incomes created by exchanges can't be modified: delete the exchange instead.
+func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInput) (Income, error) {
+	current, err := s.editable(ctx, periodStr, id)
+	if err != nil {
+		return Income{}, err
+	}
+	merged := RegisterInput{
+		Period:      current.Period.String(),
+		Currency:    string(current.Amount.Currency()),
+		Amount:      current.Amount.String(),
+		Kind:        string(current.Kind),
+		Description: current.Description,
+		ReceivedOn:  current.ReceivedOn.Format(time.DateOnly),
+		CategoryID:  current.CategoryID,
+	}
+	apply(&merged.Currency, in.Currency)
+	apply(&merged.Amount, in.Amount)
+	apply(&merged.Kind, in.Kind)
+	apply(&merged.Description, in.Description)
+	apply(&merged.ReceivedOn, in.ReceivedOn)
+	apply(&merged.CategoryID, in.CategoryID)
+
+	updated, err := s.build(ctx, merged)
+	if err != nil {
+		return Income{}, err
+	}
+	updated.ID, updated.CreatedAt = current.ID, current.CreatedAt
+	if err := s.repo.Update(ctx, updated); err != nil {
+		return Income{}, fmt.Errorf("update income: %w", err)
+	}
+	return updated, nil
+}
+
+// Delete removes an income of the period. Incomes created by exchanges can't be
+// deleted on their own: delete the exchange instead.
+func (s *Service) Delete(ctx context.Context, periodStr, id string) error {
+	if _, err := s.editable(ctx, periodStr, id); err != nil {
+		return err
+	}
+	return s.repo.Delete(ctx, id)
+}
+
+// editable returns the income if it belongs to the period and is not managed by an exchange.
+func (s *Service) editable(ctx context.Context, periodStr, id string) (Income, error) {
+	p, err := period.Parse(periodStr)
+	if err != nil {
+		return Income{}, invalid(err)
+	}
+	inc, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return Income{}, err
+	}
+	if inc.Period != p {
+		return Income{}, fmt.Errorf("%w: %q in %s", ErrNotFound, id, p)
+	}
+	if inc.Kind == KindExchange {
+		return Income{}, fmt.Errorf("%w: delete the exchange instead", ErrManagedByExchange)
+	}
+	return inc, nil
+}
+
+// apply overwrites dst with *v when v is set.
+func apply(dst *string, v *string) {
+	if v != nil {
+		*dst = *v
+	}
+}
+
+// build validates the input and returns the income, without saving it.
+func (s *Service) build(ctx context.Context, in RegisterInput) (Income, error) {
 	p, err := period.Parse(in.Period)
 	if err != nil {
 		return Income{}, invalid(err)
@@ -107,9 +205,6 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Income, error
 		Description: description,
 		ReceivedOn:  receivedOn,
 		CreatedAt:   s.now().UTC(),
-	}
-	if err := s.repo.Save(ctx, inc); err != nil {
-		return Income{}, fmt.Errorf("save income: %w", err)
 	}
 	return inc, nil
 }

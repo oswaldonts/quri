@@ -49,6 +49,37 @@ func (f *fakeExchanges) Save(_ context.Context, e Exchange, in income.Income, ou
 	return nil
 }
 
+func (f *fakeExchanges) Get(_ context.Context, id string) (Exchange, error) {
+	for _, e := range f.saved {
+		if e.ID == id {
+			return e, nil
+		}
+	}
+	return Exchange{}, ErrNotFound
+}
+
+func (f *fakeExchanges) ListByPeriod(_ context.Context, p period.Period) ([]Exchange, error) {
+	var out []Exchange
+	for _, e := range f.saved {
+		if e.Period == p {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeExchanges) Delete(_ context.Context, e Exchange) error {
+	for i := range f.saved {
+		if f.saved[i].ID == e.ID {
+			f.saved = append(f.saved[:i], f.saved[i+1:]...)
+			f.incomes = append(f.incomes[:i], f.incomes[i+1:]...)
+			f.expenses = append(f.expenses[:i], f.expenses[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
 // allCategories accepts every category in every period.
 type allCategories struct{}
 
@@ -258,5 +289,36 @@ func TestRegisterConvertsToZero(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("err = %v, want %v", err, ErrInvalidInput)
+	}
+}
+
+func TestListAndDelete(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture()
+	f.setRate(t, "3.25")
+	ex, err := f.svc.Register(ctx, RegisterInput{PairInput: usdPen, Amount: "100", ExchangedOn: "2026-08-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := f.svc.List(ctx, "2026-07")
+	if err != nil || len(list) != 1 || list[0].ID != ex.ID {
+		t.Fatalf("List = %+v, %v", list, err)
+	}
+
+	if err := f.svc.Delete(ctx, "2026-08", ex.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("other period: err = %v, want %v", err, ErrNotFound)
+	}
+	if err := f.svc.Delete(ctx, "julio", ex.ID); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("bad period: err = %v, want %v", err, ErrInvalidInput)
+	}
+	if _, err := f.svc.List(ctx, "julio"); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("List bad period: err = %v, want %v", err, ErrInvalidInput)
+	}
+	if err := f.svc.Delete(ctx, "2026-07", ex.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if len(f.exchanges.saved)+len(f.exchanges.incomes)+len(f.exchanges.expenses) != 0 {
+		t.Error("the exchange, its income and its expense must all be deleted")
 	}
 }

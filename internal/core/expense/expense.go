@@ -17,8 +17,15 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
 
-// ErrInvalidInput wraps every validation error.
-var ErrInvalidInput = errors.New("invalid input")
+var (
+	// ErrInvalidInput wraps every validation error.
+	ErrInvalidInput = errors.New("invalid input")
+	// ErrNotFound means no expense of the period has the given ID.
+	ErrNotFound = errors.New("expense not found")
+	// ErrManagedByExchange means the expense was created by an exchange and can only
+	// change through it.
+	ErrManagedByExchange = errors.New("expense is managed by its exchange")
+)
 
 const (
 	maxDescriptionLength = 200
@@ -44,6 +51,12 @@ type Repository interface {
 	Save(ctx context.Context, e Expense) error
 	// SaveAll stores every expense in one transaction: all or none.
 	SaveAll(ctx context.Context, es []Expense) error
+	// Get returns ErrNotFound if no expense has the ID.
+	Get(ctx context.Context, id string) (Expense, error)
+	// Update replaces the stored expense and its tags; ErrNotFound if it doesn't exist.
+	Update(ctx context.Context, e Expense) error
+	// Delete removes the expense and its tags; ErrNotFound if it doesn't exist.
+	Delete(ctx context.Context, id string) error
 	// ListByPeriod returns the expenses of the period ordered by date.
 	ListByPeriod(ctx context.Context, p period.Period) ([]Expense, error)
 }
@@ -90,6 +103,89 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Expense, erro
 		return Expense{}, fmt.Errorf("save expense: %w", err)
 	}
 	return e, nil
+}
+
+// UpdateInput is a partial update: nil fields keep their value. Tags, when set,
+// replace all the current tags.
+type UpdateInput struct {
+	CategoryID  *string
+	Currency    *string
+	Amount      *string
+	Description *string
+	Tags        *[]string
+	SpentOn     *string
+}
+
+// Update changes an expense of the period, validating the result like Register.
+// Expenses created by exchanges can't be modified: delete the exchange instead.
+func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInput) (Expense, error) {
+	current, err := s.editable(ctx, periodStr, id)
+	if err != nil {
+		return Expense{}, err
+	}
+	merged := RegisterInput{
+		Period:      current.Period.String(),
+		CategoryID:  current.CategoryID,
+		Currency:    string(current.Amount.Currency()),
+		Amount:      current.Amount.String(),
+		Description: current.Description,
+		Tags:        current.Tags,
+		SpentOn:     current.SpentOn.Format(time.DateOnly),
+	}
+	apply(&merged.CategoryID, in.CategoryID)
+	apply(&merged.Currency, in.Currency)
+	apply(&merged.Amount, in.Amount)
+	apply(&merged.Description, in.Description)
+	apply(&merged.SpentOn, in.SpentOn)
+	apply(&merged.Tags, in.Tags)
+
+	updated, err := s.parse(merged)
+	if err != nil {
+		return Expense{}, err
+	}
+	if err := s.checkCategory(ctx, updated); err != nil {
+		return Expense{}, err
+	}
+	updated.ID, updated.CreatedAt = current.ID, current.CreatedAt
+	if err := s.repo.Update(ctx, updated); err != nil {
+		return Expense{}, fmt.Errorf("update expense: %w", err)
+	}
+	return updated, nil
+}
+
+// Delete removes an expense of the period. Expenses created by exchanges can't be
+// deleted on their own: delete the exchange instead.
+func (s *Service) Delete(ctx context.Context, periodStr, id string) error {
+	if _, err := s.editable(ctx, periodStr, id); err != nil {
+		return err
+	}
+	return s.repo.Delete(ctx, id)
+}
+
+// editable returns the expense if it belongs to the period and is not managed by an exchange.
+func (s *Service) editable(ctx context.Context, periodStr, id string) (Expense, error) {
+	p, err := period.Parse(periodStr)
+	if err != nil {
+		return Expense{}, invalid(err)
+	}
+	e, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return Expense{}, err
+	}
+	if e.Period != p {
+		return Expense{}, fmt.Errorf("%w: %q in %s", ErrNotFound, id, p)
+	}
+	if e.ExchangeID != "" {
+		return Expense{}, fmt.Errorf("%w: delete the exchange instead", ErrManagedByExchange)
+	}
+	return e, nil
+}
+
+// apply overwrites dst with *v when v is set.
+func apply[T any](dst *T, v *T) {
+	if v != nil {
+		*dst = *v
+	}
 }
 
 // BatchInput registers several expenses of a period at once, e.g. the items of a

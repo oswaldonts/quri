@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -15,6 +16,26 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 )
+
+// EntryParams identify one entry ({id}) of a period.
+type EntryParams struct {
+	PeriodParam
+	ID string `path:"id"`
+}
+
+// deleteOperation describes a DELETE that answers 204 No Content.
+func deleteOperation(id, path, summary, description, tag string) huma.Operation {
+	return huma.Operation{
+		OperationID:   id,
+		Method:        http.MethodDelete,
+		Path:          path,
+		Summary:       summary,
+		Description:   description,
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+	}
+}
 
 // PeriodParam is the {period} path parameter shared by every period route.
 type PeriodParam struct {
@@ -61,13 +82,19 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		errors.Is(err, balance.ErrInvalidInput),
 		errors.Is(err, summary.ErrInvalidInput):
 		return huma.Error422UnprocessableEntity(err.Error())
-	case errors.Is(err, category.ErrNotFound):
+	case errors.Is(err, category.ErrNotFound),
+		errors.Is(err, income.ErrNotFound),
+		errors.Is(err, expense.ErrNotFound),
+		errors.Is(err, exchange.ErrNotFound),
+		errors.Is(err, balance.ErrNotFound):
 		return huma.Error404NotFound(err.Error())
 	case errors.Is(err, exchange.ErrRateNotFound),
 		errors.Is(err, category.ErrNameTaken),
 		errors.Is(err, category.ErrSystemCategory),
 		errors.Is(err, category.ErrArchived),
-		errors.Is(err, category.ErrInUse):
+		errors.Is(err, category.ErrInUse),
+		errors.Is(err, income.ErrManagedByExchange),
+		errors.Is(err, expense.ErrManagedByExchange):
 		// The request is valid but conflicts with the current state.
 		return huma.Error409Conflict(err.Error())
 	default:

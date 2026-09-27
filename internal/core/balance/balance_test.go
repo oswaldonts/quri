@@ -32,6 +32,14 @@ func (f *fakeRepo) ListByPeriod(_ context.Context, p period.Period) ([]Balance, 
 	return out, nil
 }
 
+func (f *fakeRepo) Delete(_ context.Context, p period.Period, c money.Currency) error {
+	if _, ok := f.byKey[key{p, c}]; !ok {
+		return ErrNotFound
+	}
+	delete(f.byKey, key{p, c})
+	return nil
+}
+
 func newTestService() (*Service, *fakeRepo) {
 	repo := &fakeRepo{byKey: map[key]Balance{}}
 	s := NewService(repo)
@@ -86,5 +94,24 @@ func TestSetValidation(t *testing.T) {
 	svc, _ := newTestService()
 	if _, err := svc.List(context.Background(), "julio"); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("List bad period: err = %v, want %v", err, ErrInvalidInput)
+	}
+}
+
+func TestDelete(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newTestService()
+	_, _ = svc.Set(ctx, SetInput{Period: "2026-07", Currency: "PEN", Amount: "10"})
+
+	if err := svc.Delete(ctx, "2026-07", "USD"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing balance: err = %v, want %v", err, ErrNotFound)
+	}
+	if err := svc.Delete(ctx, "2026-07", "EUR"); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("bad currency: err = %v, want %v", err, ErrInvalidInput)
+	}
+	if err := svc.Delete(ctx, "julio", "PEN"); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("bad period: err = %v, want %v", err, ErrInvalidInput)
+	}
+	if err := svc.Delete(ctx, "2026-07", "pen"); err != nil || len(repo.byKey) != 0 {
+		t.Errorf("Delete = %v, remaining %d", err, len(repo.byKey))
 	}
 }

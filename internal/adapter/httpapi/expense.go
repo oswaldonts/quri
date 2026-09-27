@@ -15,6 +15,21 @@ type ExpenseService interface {
 	Register(ctx context.Context, in expense.RegisterInput) (expense.Expense, error)
 	RegisterBatch(ctx context.Context, in expense.BatchInput) ([]expense.Expense, error)
 	List(ctx context.Context, period string, f expense.Filter) ([]expense.Expense, error)
+	Update(ctx context.Context, period, id string, in expense.UpdateInput) (expense.Expense, error)
+	Delete(ctx context.Context, period, id string) error
+}
+
+// UpdateExpenseInput is the request of PATCH /periods/{period}/expenses/{id}: only the sent fields change.
+type UpdateExpenseInput struct {
+	EntryParams
+	Body struct {
+		CategoryID  *string       `json:"category_id,omitempty"`
+		Currency    *CurrencyCode `json:"currency,omitempty"`
+		Amount      *string       `json:"amount,omitempty" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$"`
+		Description *string       `json:"description,omitempty" maxLength:"200"`
+		Tags        *[]string     `json:"tags,omitempty" maxItems:"10" doc:"Replaces all the tags; an empty list removes them."`
+		SpentOn     *string       `json:"spent_on,omitempty" format:"date"`
+	}
 }
 
 // RegisterBatchInput is the request of POST /periods/{period}/expenses/batch.
@@ -187,4 +202,39 @@ func registerExpenseBatch(api huma.API, expenses ExpenseService) {
 		}
 		return out, nil
 	})
+}
+
+func registerExpenseEdits(api huma.API, expenses ExpenseService) {
+	huma.Register(api, huma.Operation{
+		OperationID: "update-expense",
+		Method:      http.MethodPatch,
+		Path:        "/periods/{period}/expenses/{id}",
+		Summary:     "Update an expense",
+		Description: "Only the sent fields change; the result is validated like a new expense. " +
+			"Expenses created by exchanges can't be modified (409): delete the exchange instead.",
+		Tags:   []string{tagExpenses},
+		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *UpdateExpenseInput) (*ExpenseOutput, error) {
+		e, err := expenses.Update(ctx, in.Period, in.ID, expense.UpdateInput{
+			CategoryID:  in.Body.CategoryID,
+			Currency:    (*string)(in.Body.Currency),
+			Amount:      in.Body.Amount,
+			Description: in.Body.Description,
+			Tags:        in.Body.Tags,
+			SpentOn:     in.Body.SpentOn,
+		})
+		if err != nil {
+			return nil, toHTTPError(ctx, "update expense", err)
+		}
+		return &ExpenseOutput{Body: toExpense(e)}, nil
+	})
+
+	huma.Register(api, deleteOperation("delete-expense", "/periods/{period}/expenses/{id}", "Delete an expense",
+		"Expenses created by exchanges can't be deleted (409): delete the exchange instead.", tagExpenses),
+		func(ctx context.Context, in *EntryParams) (*struct{}, error) {
+			if err := expenses.Delete(ctx, in.Period, in.ID); err != nil {
+				return nil, toHTTPError(ctx, "delete expense", err)
+			}
+			return nil, nil
+		})
 }
