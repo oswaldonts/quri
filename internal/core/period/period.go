@@ -2,6 +2,7 @@
 package period
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"time"
@@ -39,6 +40,21 @@ func (p Period) SpendMonth() Period {
 	// time.Date normalizes month 13 into January of the next year.
 	t := time.Date(p.year, p.month+1, 1, 0, 0, 0, 0, time.UTC)
 	return Period{year: t.Year(), month: t.Month()}
+}
+
+// Next returns the following period (same as SpendMonth, named for iteration).
+func (p Period) Next() Period { return p.SpendMonth() }
+
+// Compare returns -1, 0 or +1 when p is before, equal to or after q.
+func (p Period) Compare(q Period) int {
+	return cmp.Or(cmp.Compare(p.year, q.year), cmp.Compare(p.month, q.month))
+}
+
+// MonthsBetween returns how many periods there are from p to q, both included
+// (0 if q is before p).
+func (p Period) MonthsBetween(q Period) int {
+	n := (q.year-p.year)*12 + int(q.month) - int(p.month) + 1
+	return max(n, 0)
 }
 
 // String formats the period as YYYY-MM.

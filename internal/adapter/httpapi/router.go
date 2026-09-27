@@ -63,6 +63,7 @@ func NewRouter(s Services) http.Handler {
 	registerExpenseEdits(api, s.Expenses)
 	registerBalances(api, s.Balances)
 	registerSummary(api, s.Summaries)
+	registerTrends(api, s.Summaries)
 	registerBudgets(api, s.Budgets)
 	registerRates(api, s.Rates)
 	registerExchanges(api, s.Exchanges)

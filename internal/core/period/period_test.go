@@ -60,3 +60,22 @@ func TestSpendMonth(t *testing.T) {
 		})
 	}
 }
+
+func TestNextCompareMonthsBetween(t *testing.T) {
+	dec, _ := Parse("2026-12")
+	jan, _ := Parse("2027-01")
+	jul, _ := Parse("2026-07")
+
+	if dec.Next() != jan {
+		t.Errorf("2026-12 Next = %s, want 2027-01", dec.Next())
+	}
+	if jul.Compare(dec) != -1 || dec.Compare(jul) != 1 || jan.Compare(jan) != 0 || dec.Compare(jan) != -1 {
+		t.Error("Compare is wrong")
+	}
+	if n := jul.MonthsBetween(jan); n != 7 {
+		t.Errorf("2026-07..2027-01 = %d months, want 7", n)
+	}
+	if n := jan.MonthsBetween(jul); n != 0 {
+		t.Errorf("reversed range = %d, want 0", n)
+	}
+}
