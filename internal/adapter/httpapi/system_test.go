@@ -7,7 +7,7 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	rec := send(NewRouter(Services{}), http.MethodGet, "/health", "")
+	rec := send(NewRouter(Services{}, quiet), http.MethodGet, "/health", "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -20,7 +20,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestDocs(t *testing.T) {
-	h := NewRouter(Services{})
+	h := NewRouter(Services{}, quiet)
 
 	spec := send(h, http.MethodGet, "/openapi.yaml", "")
 	if spec.Code != http.StatusOK {

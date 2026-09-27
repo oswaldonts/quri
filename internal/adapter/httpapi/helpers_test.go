@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -44,8 +45,11 @@ func newTestRouter(t *testing.T) http.Handler {
 		Expenses:   expense.NewService(expenseRepo, categorySvc),
 		Rates:      exchangeSvc,
 		Exchanges:  exchangeSvc,
-	})
+	}, quiet)
 }
+
+// quiet discards the request logs in tests.
+var quiet = slog.New(slog.DiscardHandler)
 
 func send(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))

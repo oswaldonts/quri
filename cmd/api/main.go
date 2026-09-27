@@ -3,11 +3,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
@@ -21,12 +24,20 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 )
 
+// shutdownTimeout bounds how long in-flight requests may take once a stop signal arrives.
+// It must stay below the orchestrator's kill timeout (kill_timeout in the Nomad job).
+const shutdownTimeout = 10 * time.Second
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
+	// ctx is canceled on SIGINT (Ctrl+C) or SIGTERM (docker stop, Nomad).
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// run returns instead of exiting so its deferred cleanups (closing the database) execute.
-	if err := run(context.Background(), logger); err != nil {
+	if err := run(ctx, logger); err != nil {
 		logger.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
@@ -69,12 +80,35 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			Budgets:    budgetService,
 			Rates:      exchangeService,
 			Exchanges:  exchangeService,
-		}),
+		}, logger),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	logger.Info("starting server", "addr", addr, "database", dbPath)
-	return srv.ListenAndServe()
+	serveErr := make(chan error, 1)
+	go func() {
+		logger.Info("starting server", "addr", addr, "database", dbPath)
+		serveErr <- srv.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serveErr: // could not start, e.g. port in use
+		return err
+	case <-ctx.Done():
+	}
+
+	logger.Info("shutting down", "timeout", shutdownTimeout)
+	// A fresh context: ctx is already canceled, but the shutdown needs its own deadline.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	// Shutdown stops accepting connections and waits for in-flight requests to finish.
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown: %w", err)
+	}
+	if err := <-serveErr; !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	logger.Info("server stopped")
+	return nil
 }
 
 // getenv returns the value of the environment variable key, or fallback if it is unset or empty.

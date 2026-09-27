@@ -6,6 +6,7 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -44,12 +45,13 @@ type Services struct {
 }
 
 // NewRouter builds the HTTP handler with all routes, middlewares and docs.
-func NewRouter(s Services) http.Handler {
+// Every request is logged to logger.
+func NewRouter(s Services, logger *slog.Logger) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	r.Use(requestLogger(logger))
 	r.Use(middleware.Recoverer)
 
 	api := humachi.New(r, newConfig())

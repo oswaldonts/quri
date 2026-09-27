@@ -93,7 +93,7 @@ func (failingIncomes) Delete(context.Context, string, string) error {
 }
 
 func TestRegisterIncomeInternalError(t *testing.T) {
-	rec := send(NewRouter(Services{Incomes: failingIncomes{}}), http.MethodPost, "/periods/2026-07/incomes", incomeBody)
+	rec := send(NewRouter(Services{Incomes: failingIncomes{}}, quiet), http.MethodPost, "/periods/2026-07/incomes", incomeBody)
 
 	p := assertProblem(t, rec, http.StatusInternalServerError)
 	if strings.Contains(p.Detail, "connection refused") {
