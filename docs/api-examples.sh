@@ -106,6 +106,16 @@ section "Trends"
   categories: [.categories[] | "\(.name): total \(.total), average \(.average)"]
 }'
 
+section "Planning: planned entries and the projected view"
+PLANNED=$("${CURL[@]}" -X POST "$API/periods/$P/expenses" "${JSON[@]}" \
+  -d '{"category_id": "utilities", "currency": "PEN", "amount": "120.00", "description": "Luz (estimado)", "spent_on": "2026-09-20", "status": "planned"}' | jq -r .id)
+"${CURL[@]}" "$API/periods/$P/expenses?status=planned" | jq -c '[.[] | {description, amount, status}]'
+"${CURL[@]}" "$API/periods/$P/available" | jq -c '[.[] | {currency, available}]'                 # confirmed only
+"${CURL[@]}" "$API/periods/$P/available?view=projected" | jq -c '[.[] | {currency, available}]'  # with the plan
+# It happened, for a slightly different amount: confirm and correct in one request.
+"${CURL[@]}" -X PATCH "$API/periods/$P/expenses/$PLANNED" "${JSON[@]}" \
+  -d '{"status": "confirmed", "amount": "126.40"}' | jq -c '{description, amount, status}'
+
 section "Deletes"
 "${CURL[@]}" -X DELETE "$API/periods/$P/budgets/leisure/PEN" -o /dev/null -w 'budget: %{http_code}\n'
 "${CURL[@]}" -X DELETE "$API/periods/$P/balances/USD" -o /dev/null -w 'balance: %{http_code}\n'
