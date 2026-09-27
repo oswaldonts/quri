@@ -63,7 +63,7 @@ func testData(t *testing.T) ([]income.Income, []expense.Expense, []balance.Balan
 
 func TestBuild(t *testing.T) {
 	incomes, expenses, balances := testData(t)
-	s := build(july, entries{incomes: incomes, expenses: expenses, balances: balances}, catalog)
+	s := build(july, entries{incomes: incomes, expenses: expenses, balances: balances}, catalog, nil)
 
 	if len(s.Currencies) != 2 || s.Currencies[0].Currency != money.PEN || s.Currencies[1].Currency != money.USD {
 		t.Fatalf("currencies = %v, want PEN then USD", s.Currencies)
@@ -154,14 +154,14 @@ func TestBuildTopItemsLimit(t *testing.T) {
 	for i := range 15 {
 		expenses = append(expenses, exp(t, "market", "1", money.PEN, string(rune('a'+i))))
 	}
-	s := build(july, entries{expenses: expenses}, catalog)
+	s := build(july, entries{expenses: expenses}, catalog, nil)
 	if n := len(s.Currencies[0].TopItems); n != maxTopItems {
 		t.Errorf("top items = %d, want %d", n, maxTopItems)
 	}
 }
 
 func TestBuildEmptyPeriod(t *testing.T) {
-	if s := build(july, entries{}, catalog); len(s.Currencies) != 0 {
+	if s := build(july, entries{}, catalog, nil); len(s.Currencies) != 0 {
 		t.Errorf("empty period: currencies = %v, want none", s.Currencies)
 	}
 }
@@ -173,7 +173,7 @@ func TestBuildBudgets(t *testing.T) {
 		{CategoryID: "leisure", Amount: m(t, "30.00", money.PEN)}, // no PEN expenses yet
 		{CategoryID: "leisure", Amount: m(t, "50.00", money.USD)}, // spent 48.50
 	}
-	s := build(july, entries{expenses: expenses, budgets: budgets}, catalog)
+	s := build(july, entries{expenses: expenses, budgets: budgets}, catalog, nil)
 	pen, usd := s.Currencies[0], s.Currencies[1]
 
 	find := func(cs CurrencySummary, id string) CategoryTotal {
@@ -209,7 +209,7 @@ func TestBuildBudgets(t *testing.T) {
 
 func TestContributionWithoutExpensesIsNotACategory(t *testing.T) {
 	incomes := []income.Income{{Kind: income.KindExtra, Amount: m(t, "118.00", money.PEN), CategoryID: "loans"}}
-	s := build(july, entries{incomes: incomes}, catalog)
+	s := build(july, entries{incomes: incomes}, catalog, nil)
 	pen := s.Currencies[0]
 
 	if len(pen.Categories) != 0 {

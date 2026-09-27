@@ -179,3 +179,17 @@ func TestExchangeRepositorySaveIsAtomic(t *testing.T) {
 		t.Errorf("incomes = %d, want 1: the orphan income was not rolled back", got)
 	}
 }
+
+func TestRateRepositoryDelete(t *testing.T) {
+	ctx := context.Background()
+	repo := NewRateRepository(openTestDB(t))
+	rate, _ := money.ParseRate("3.25")
+	_ = repo.SaveRate(ctx, exchange.PeriodRate{Period: july, From: money.USD, To: money.PEN, Rate: rate, UpdatedAt: now})
+
+	if err := repo.DeleteRate(ctx, july, money.USD, money.PEN); err != nil {
+		t.Fatalf("DeleteRate: %v", err)
+	}
+	if err := repo.DeleteRate(ctx, july, money.USD, money.PEN); !errors.Is(err, exchange.ErrRateNotFound) {
+		t.Errorf("second DeleteRate: err = %v, want %v", err, exchange.ErrRateNotFound)
+	}
+}

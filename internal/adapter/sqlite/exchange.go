@@ -58,6 +58,18 @@ func (r *RateRepository) FindRate(ctx context.Context, p period.Period, from, to
 	return toPeriodRate(row)
 }
 
+// DeleteRate removes the rate of a period and pair.
+func (r *RateRepository) DeleteRate(ctx context.Context, p period.Period, from, to money.Currency) error {
+	n, err := r.q.DeleteRate(ctx, sqlitedb.DeleteRateParams{Period: p.String(), FromCurrency: string(from), ToCurrency: string(to)})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return exchange.ErrRateNotFound
+	}
+	return nil
+}
+
 // toPeriodRate rebuilds the domain type from a row, validating every column.
 func toPeriodRate(row sqlitedb.Rate) (exchange.PeriodRate, error) {
 	p, err := period.Parse(row.Period)

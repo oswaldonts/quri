@@ -24,6 +24,8 @@ type RateRepository interface {
 	SaveRate(ctx context.Context, r PeriodRate) error
 	// FindRate returns ErrRateNotFound when no rate was set.
 	FindRate(ctx context.Context, p period.Period, from, to money.Currency) (PeriodRate, error)
+	// DeleteRate returns ErrRateNotFound when no rate was set.
+	DeleteRate(ctx context.Context, p period.Period, from, to money.Currency) error
 }
 
 // Repository stores exchanges.
@@ -99,6 +101,22 @@ func (s *Service) Rate(ctx context.Context, in PairInput) (PeriodRate, error) {
 		return PeriodRate{}, err
 	}
 	return s.findRate(ctx, p, from, to)
+}
+
+// DeleteRate removes the rate of a period and pair. Exchanges already registered
+// keep the rate they were made with.
+func (s *Service) DeleteRate(ctx context.Context, in PairInput) error {
+	p, from, to, err := parsePair(in)
+	if err != nil {
+		return err
+	}
+	if err := s.rates.DeleteRate(ctx, p, from, to); err != nil {
+		if errors.Is(err, ErrRateNotFound) {
+			return fmt.Errorf("%w: no %s→%s rate set for period %s", ErrRateNotFound, from, to, p)
+		}
+		return err
+	}
+	return nil
 }
 
 // RegisterInput carries the raw values of a new exchange.

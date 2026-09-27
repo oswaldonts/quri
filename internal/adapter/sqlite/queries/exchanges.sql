@@ -32,3 +32,6 @@ ORDER BY exchanged_on, created_at;
 
 -- name: DeleteExchange :exec
 DELETE FROM exchanges WHERE id = ?;
+
+-- name: DeleteRate :execrows
+DELETE FROM rates WHERE period = ? AND from_currency = ? AND to_currency = ?;

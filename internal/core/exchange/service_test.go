@@ -27,6 +27,14 @@ func (f *fakeRates) SaveRate(_ context.Context, r PeriodRate) error {
 	return nil
 }
 
+func (f *fakeRates) DeleteRate(_ context.Context, p period.Period, from, to money.Currency) error {
+	if _, ok := f.rates[rateKey(p, from, to)]; !ok {
+		return ErrRateNotFound
+	}
+	delete(f.rates, rateKey(p, from, to))
+	return nil
+}
+
 func (f *fakeRates) FindRate(_ context.Context, p period.Period, from, to money.Currency) (PeriodRate, error) {
 	r, ok := f.rates[rateKey(p, from, to)]
 	if !ok {
@@ -320,5 +328,24 @@ func TestListAndDelete(t *testing.T) {
 	}
 	if len(f.exchanges.saved)+len(f.exchanges.incomes)+len(f.exchanges.expenses) != 0 {
 		t.Error("the exchange, its income and its expense must all be deleted")
+	}
+}
+
+func TestDeleteRate(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture()
+	f.setRate(t, "3.25")
+
+	if err := f.svc.DeleteRate(ctx, usdPen); err != nil {
+		t.Fatalf("DeleteRate: %v", err)
+	}
+	if _, err := f.svc.Rate(ctx, usdPen); !errors.Is(err, ErrRateNotFound) {
+		t.Errorf("after delete: err = %v, want %v", err, ErrRateNotFound)
+	}
+	if err := f.svc.DeleteRate(ctx, usdPen); !errors.Is(err, ErrRateNotFound) {
+		t.Errorf("second delete: err = %v, want %v", err, ErrRateNotFound)
+	}
+	if err := f.svc.DeleteRate(ctx, PairInput{Period: "2026-7", From: "USD", To: "PEN"}); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("bad period: err = %v, want %v", err, ErrInvalidInput)
 	}
 }

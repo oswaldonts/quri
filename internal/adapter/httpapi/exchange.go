@@ -16,6 +16,7 @@ import (
 type RateManager interface {
 	SetRate(ctx context.Context, in exchange.SetRateInput) (exchange.PeriodRate, error)
 	Rate(ctx context.Context, in exchange.PairInput) (exchange.PeriodRate, error)
+	DeleteRate(ctx context.Context, in exchange.PairInput) error
 }
 
 // ExchangeService is what the HTTP layer needs from the exchange use cases.
@@ -123,6 +124,19 @@ func toExchange(e exchange.Exchange) Exchange {
 }
 
 func registerRates(api huma.API, rates RateManager) {
+	huma.Register(api, deleteOperation("delete-rate", "/periods/{period}/rates/{pair}", "Delete the rate of a period",
+		"Exchanges already registered keep the rate they were made with.", tagRates),
+		func(ctx context.Context, in *GetRateInput) (*struct{}, error) {
+			err := rates.DeleteRate(ctx, in.toInput())
+			if errors.Is(err, exchange.ErrRateNotFound) {
+				return nil, huma.Error404NotFound(err.Error())
+			}
+			if err != nil {
+				return nil, toHTTPError(ctx, "delete rate", err)
+			}
+			return nil, nil
+		})
+
 	huma.Register(api, huma.Operation{
 		OperationID: "set-rate",
 		Method:      http.MethodPut,

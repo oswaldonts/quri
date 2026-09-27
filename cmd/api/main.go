@@ -54,7 +54,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	expenseService := expense.NewService(expenseRepo, categoryService)
 	budgetRepo := sqlite.NewBudgetRepository(db)
 	budgetService := budget.NewService(budgetRepo, categoryService)
-	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo)
+	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo, sqlite.NewPeriodBounds(db))
 	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService)
 
 	addr := ":" + getenv("PORT", "8080")

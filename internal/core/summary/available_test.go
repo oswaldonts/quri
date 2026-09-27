@@ -20,7 +20,7 @@ func TestBuildAvailable(t *testing.T) {
 		{CategoryID: "health-insurance", Amount: m(t, "1000.00", money.PEN)},
 	}
 
-	got := buildAvailable(incomes, expenses)
+	got := buildAvailable(incomes, expenses, nil)
 	if len(got) != 2 {
 		t.Fatalf("got %d currencies, want 2", len(got))
 	}
@@ -32,7 +32,7 @@ func TestBuildAvailable(t *testing.T) {
 		t.Errorf("USD available = %s, want 130.00", usd.Available)
 	}
 
-	if empty := buildAvailable(nil, nil); len(empty) != 0 {
+	if empty := buildAvailable(nil, nil, nil); len(empty) != 0 {
 		t.Errorf("empty period = %v, want none", empty)
 	}
 }

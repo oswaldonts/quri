@@ -69,7 +69,10 @@ type CurrencySummary struct {
 	Spent         money.Money  // total spent
 	Budgeted      *money.Money // sum of the category budgets, if any
 
-	Available  money.Money  // income total − spent: what should be left
+	CarriedOver money.Money // brought from the previous period (see CarriedFrom)
+	CarriedFrom CarrySource // "" when nothing is carried
+
+	Available  money.Money  // carried over + income total − spent: what should be left
 	Real       *money.Money // real balance, if registered
 	Difference *money.Money // available − real; 0 means every entry is registered
 }
@@ -127,32 +130,36 @@ type Service struct {
 	balances   BalanceReader
 	categories CategoryReader
 	budgets    BudgetReader
+	bounds     PeriodBounds
 }
 
 // NewService returns a Service reading from the given repositories.
 func NewService(incomes IncomeReader, expenses ExpenseReader, balances BalanceReader,
-	categories CategoryReader, budgets BudgetReader) *Service {
-	return &Service{incomes: incomes, expenses: expenses, balances: balances, categories: categories, budgets: budgets}
+	categories CategoryReader, budgets BudgetReader, bounds PeriodBounds) *Service {
+	return &Service{
+		incomes: incomes, expenses: expenses, balances: balances,
+		categories: categories, budgets: budgets, bounds: bounds,
+	}
 }
 
-// Get builds the summary of a period.
+// Get builds the summary of a period, including what it carries from the previous one.
 func (s *Service) Get(ctx context.Context, periodStr string) (Summary, error) {
 	p, err := period.Parse(periodStr)
 	if err != nil {
 		return Summary{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
+	carry, err := s.carryInto(ctx, p)
+	if err != nil {
+		return Summary{}, err
+	}
+	return s.summarize(ctx, p, carry)
+}
 
-	incomes, err := s.incomes.ListByPeriod(ctx, p)
+// summarize builds the summary of a period given what it carries.
+func (s *Service) summarize(ctx context.Context, p period.Period, carry carries) (Summary, error) {
+	incomes, expenses, balances, err := s.movements(ctx, p)
 	if err != nil {
-		return Summary{}, fmt.Errorf("list incomes: %w", err)
-	}
-	expenses, err := s.expenses.ListByPeriod(ctx, p)
-	if err != nil {
-		return Summary{}, fmt.Errorf("list expenses: %w", err)
-	}
-	balances, err := s.balances.ListByPeriod(ctx, p)
-	if err != nil {
-		return Summary{}, fmt.Errorf("list balances: %w", err)
+		return Summary{}, err
 	}
 	catalog, err := s.categories.List(ctx, true) // archived too: old periods may use them
 	if err != nil {
@@ -162,8 +169,7 @@ func (s *Service) Get(ctx context.Context, periodStr string) (Summary, error) {
 	if err != nil {
 		return Summary{}, fmt.Errorf("list budgets: %w", err)
 	}
-
-	return build(p, entries{incomes, expenses, balances, budgets}, catalog), nil
+	return build(p, entries{incomes, expenses, balances, budgets}, catalog, carry), nil
 }
 
 // GetCurrency builds the summary of one currency in a period. A currency without
@@ -189,7 +195,7 @@ type entries struct {
 }
 
 // build is pure: it only computes, which keeps it easy to test.
-func build(p period.Period, e entries, catalog []category.Category) Summary {
+func build(p period.Period, e entries, catalog []category.Category, carry carries) Summary {
 
 	categories := make(map[string]category.Category, len(catalog))
 	for _, c := range catalog {
@@ -204,6 +210,9 @@ func build(p period.Period, e entries, catalog []category.Category) Summary {
 		return builders[c]
 	}
 
+	for c, cr := range carry {
+		get(c).carry = cr
+	}
 	for _, in := range e.incomes {
 		get(in.Amount.Currency()).addIncome(in)
 	}
@@ -237,6 +246,7 @@ type builder struct {
 	byItem         map[string]*ItemTotal
 
 	committed, discretionary, exchanged, spent money.Money
+	carry                                      Carry
 	real                                       *money.Money
 }
 
@@ -254,6 +264,7 @@ func newBuilder(c money.Currency, categories map[string]category.Category) *buil
 		committed:      zero,
 		discretionary:  zero,
 		exchanged:      zero,
+		carry:          Carry{Amount: zero},
 		spent:          zero,
 	}
 }
@@ -359,7 +370,9 @@ func (b *builder) result() CurrencySummary {
 		Discretionary: b.discretionary,
 		Exchanged:     b.exchanged,
 		Spent:         b.spent,
-		Available:     sub(b.income.Total, b.spent),
+		CarriedOver:   b.carry.Amount,
+		CarriedFrom:   b.carry.From,
+		Available:     sub(add(b.carry.Amount, b.income.Total), b.spent),
 		Real:          b.real,
 	}
 	if b.real != nil {

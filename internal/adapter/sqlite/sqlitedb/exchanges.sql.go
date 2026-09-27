@@ -18,6 +18,24 @@ func (q *Queries) DeleteExchange(ctx context.Context, id string) error {
 	return err
 }
 
+const deleteRate = `-- name: DeleteRate :execrows
+DELETE FROM rates WHERE period = ? AND from_currency = ? AND to_currency = ?
+`
+
+type DeleteRateParams struct {
+	Period       string
+	FromCurrency string
+	ToCurrency   string
+}
+
+func (q *Queries) DeleteRate(ctx context.Context, arg DeleteRateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteRate, arg.Period, arg.FromCurrency, arg.ToCurrency)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getExchange = `-- name: GetExchange :one
 SELECT id, period, from_currency, from_amount_minor, to_currency, to_amount_minor,
        rate_scaled, description, exchanged_on, income_id, created_at

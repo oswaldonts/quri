@@ -108,3 +108,14 @@ func TestRegisterExchangeErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteRate(t *testing.T) {
+	h := newTestRouter(t)
+	send(h, http.MethodPut, ratePath, `{"rate": "3.25"}`)
+
+	if rec := send(h, http.MethodDelete, ratePath, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE: status = %d (body: %s)", rec.Code, rec.Body)
+	}
+	assertProblem(t, send(h, http.MethodGet, ratePath, ""), http.StatusNotFound)
+	assertProblem(t, send(h, http.MethodDelete, ratePath, ""), http.StatusNotFound)
+}

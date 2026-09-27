@@ -78,14 +78,20 @@ func (s *Service) Trends(ctx context.Context, in TrendsInput) (Trends, error) {
 		return Trends{}, fmt.Errorf("%w: at most %d months, got %d", ErrInvalidInput, maxTrendMonths, months)
 	}
 
-	// One summary per month; a personal budget has few entries, so this stays cheap.
+	// The carry is computed once for the first month; each month then passes its
+	// leftover to the next one.
+	carry, err := s.carryInto(ctx, from)
+	if err != nil {
+		return Trends{}, err
+	}
 	perMonth := make([]CurrencySummary, 0, months)
 	for p := from; p.Compare(to) <= 0; p = p.Next() {
-		s, err := s.Get(ctx, p.String())
+		sum, err := s.summarize(ctx, p, carry)
 		if err != nil {
 			return Trends{}, err
 		}
-		perMonth = append(perMonth, currencyOf(s, currency))
+		perMonth = append(perMonth, currencyOf(sum, currency))
+		carry = carriesFromSummary(sum)
 	}
 	return buildTrends(from, to, currency, perMonth), nil
 }

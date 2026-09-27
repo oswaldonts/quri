@@ -39,7 +39,7 @@ func newTestRouter(t *testing.T) http.Handler {
 		Categories: categorySvc,
 		Incomes:    income.NewService(incomeRepo, categorySvc),
 		Balances:   balance.NewService(balanceRepo),
-		Summaries:  summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo),
+		Summaries:  summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo, sqlite.NewPeriodBounds(db)),
 		Budgets:    budget.NewService(budgetRepo, categorySvc),
 		Expenses:   expense.NewService(expenseRepo, categorySvc),
 		Rates:      exchangeSvc,

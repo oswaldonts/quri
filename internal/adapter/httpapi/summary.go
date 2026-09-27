@@ -45,7 +45,9 @@ type CurrencySummary struct {
 	Exchanged     string              `json:"exchanged" doc:"Spent in the system category Cambio."`
 	Spent         string              `json:"spent"`
 	Budgeted      string              `json:"budgeted,omitempty" doc:"Sum of the category budgets, if any."`
-	Available     string              `json:"available" doc:"Income total minus spent: the money that should be left."`
+	CarriedOver   string              `json:"carried_over" doc:"Money brought from the previous period (its real balance if registered, otherwise its available money)."`
+	CarriedFrom   string              `json:"carried_from,omitempty" enum:"real,available" doc:"Where carried_over comes from; omitted when nothing is carried."`
+	Available     string              `json:"available" doc:"carried_over + income total − spent: the money that should be left."`
 	Real          string              `json:"real,omitempty" doc:"Real balance, if registered."`
 	Difference    string              `json:"difference,omitempty" doc:"available − real. 0 means every entry is registered; negative: more money than registered; positive: an expense is missing."`
 }
@@ -120,6 +122,8 @@ func toCurrencySummary(c summary.CurrencySummary) CurrencySummary {
 		Exchanged:     c.Exchanged.String(),
 		Spent:         c.Spent.String(),
 		Budgeted:      optional(c.Budgeted),
+		CarriedOver:   c.CarriedOver.String(),
+		CarriedFrom:   string(c.CarriedFrom),
 		Available:     c.Available.String(),
 		Real:          optional(c.Real),
 		Difference:    optional(c.Difference),
@@ -334,10 +338,12 @@ func registerTrends(api huma.API, summaries SummaryService) {
 
 // Available is what is left of a period in one currency.
 type Available struct {
-	Currency  string `json:"currency" example:"PEN"`
-	Income    string `json:"income" example:"4018.00" doc:"Every income of the period: salary, exchanges and extras."`
-	Spent     string `json:"spent" example:"1000.00" doc:"Every expense of the period, including the exchanges."`
-	Available string `json:"available" example:"3018.00" doc:"income − spent: the money left."`
+	Currency    string `json:"currency" example:"PEN"`
+	CarriedOver string `json:"carried_over" example:"3018.00" doc:"Money brought from the previous period (its real balance if registered, otherwise its available money)."`
+	CarriedFrom string `json:"carried_from,omitempty" enum:"real,available" doc:"Where carried_over comes from; omitted when nothing is carried."`
+	Income      string `json:"income" example:"4018.00" doc:"Every income of the period: salary, exchanges and extras."`
+	Spent       string `json:"spent" example:"1000.00" doc:"Every expense of the period, including the exchanges."`
+	Available   string `json:"available" example:"3018.00" doc:"carried_over + income − spent: the money left."`
 }
 
 // AvailableOutput is the response of GET /periods/{period}/available.
@@ -351,7 +357,8 @@ func registerAvailable(api huma.API, summaries SummaryService) {
 		Method:      http.MethodGet,
 		Path:        "/periods/{period}/available",
 		Summary:     "Money left in a period",
-		Description: "Per currency, income − spent. The quick answer to \"how much do I have left?\"; " +
+		Description: "Per currency, carried over from the previous period + income − spent. The quick answer to " +
+			"\"how much do I have left?\"; the leftover of each month is carried into the next one automatically. " +
 			"the summary has the same figure plus the detail by category, tag and item.",
 		Tags:   []string{tagSummary},
 		Errors: []int{http.StatusUnprocessableEntity},
@@ -363,10 +370,12 @@ func registerAvailable(api huma.API, summaries SummaryService) {
 		out := &AvailableOutput{Body: make([]Available, 0, len(as))}
 		for _, a := range as {
 			out.Body = append(out.Body, Available{
-				Currency:  string(a.Currency),
-				Income:    a.Income.String(),
-				Spent:     a.Spent.String(),
-				Available: a.Available.String(),
+				Currency:    string(a.Currency),
+				CarriedOver: a.CarriedOver.String(),
+				CarriedFrom: string(a.CarriedFrom),
+				Income:      a.Income.String(),
+				Spent:       a.Spent.String(),
+				Available:   a.Available.String(),
 			})
 		}
 		return out, nil

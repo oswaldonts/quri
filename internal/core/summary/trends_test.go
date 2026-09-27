@@ -15,11 +15,11 @@ func TestBuildTrends(t *testing.T) {
 	// June: Mercado 100 (dulces). July: nothing. August: Mercado 50, Ocio 20.
 	june := build(jun, entries{expenses: []expense.Expense{
 		exp(t, "market", "100", money.PEN, "Compra", "dulces"),
-	}}, catalog)
+	}}, catalog, nil)
 	august := build(aug, entries{expenses: []expense.Expense{
 		exp(t, "market", "50", money.PEN, "Compra"),
 		exp(t, "leisure", "20", money.PEN, "Cine"),
-	}}, catalog)
+	}}, catalog, nil)
 	months := []CurrencySummary{
 		currencyOf(june, money.PEN),
 		currencyOf(Summary{}, money.PEN), // July had no activity
