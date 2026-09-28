@@ -20,12 +20,25 @@ type AuthService interface {
 	CheckPassword(password string) error
 	IssueToken() (token string, expiresAt time.Time)
 	VerifyToken(token string) bool
+	// Configured reports whether a password has been set. false only in the
+	// AUTH_LOCAL_CREDENTIALS setup flow, before the first POST /setup.
+	Configured() bool
+	// Configure sets the operator password; see auth.Service.Configure.
+	Configure(password string) error
 }
 
 // LoginInput is the request of POST /login.
 type LoginInput struct {
 	Body struct {
 		Password string `json:"password"`
+	}
+}
+
+// SetupInput is the request of POST /setup. The 8-character minimum isn't a
+// real password policy, just enough to keep "1" from being called done.
+type SetupInput struct {
+	Body struct {
+		Password string `json:"password" minLength:"8"`
 	}
 }
 
@@ -47,6 +60,25 @@ func registerAuth(api huma.API, svc AuthService) {
 	limiter := rate.NewLimiter(rate.Every(loginRateLimit), loginBurst)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "setup",
+		Method:      http.MethodPost,
+		Path:        "/setup",
+		Summary:     "Set the operator password",
+		Description: "Only for the AUTH_LOCAL_CREDENTIALS mode (see cmd/hashpw / cmd/api docs): works " +
+			"exactly once, the first time this instance runs with no password configured yet. Logs the " +
+			"operator in immediately, like POST /login would. Returns 409 once a password already exists.",
+		Tags:          []string{tagAuth},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusConflict, http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *SetupInput) (*LoginOutput, error) {
+		if err := svc.Configure(in.Body.Password); err != nil {
+			return nil, toHTTPError(ctx, "setup", err)
+		}
+		token, expiresAt := svc.IssueToken()
+		return &LoginOutput{SetCookie: newSessionCookie(token, expiresAt).String()}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "login",
 		Method:      http.MethodPost,
 		Path:        "/login",
@@ -55,13 +87,13 @@ func registerAuth(api huma.API, svc AuthService) {
 			"operator: no username, no accounts. Rate limited to slow down password guessing.",
 		Tags:          []string{tagAuth},
 		DefaultStatus: http.StatusNoContent,
-		Errors:        []int{http.StatusUnauthorized, http.StatusTooManyRequests},
+		Errors:        []int{http.StatusUnauthorized, http.StatusTooManyRequests, http.StatusPreconditionRequired},
 	}, func(ctx context.Context, in *LoginInput) (*LoginOutput, error) {
 		if !limiter.Allow() {
 			return nil, huma.Error429TooManyRequests("too many login attempts, slow down")
 		}
 		if err := svc.CheckPassword(in.Body.Password); err != nil {
-			return nil, huma.Error401Unauthorized("wrong password")
+			return nil, toHTTPError(ctx, "login", err)
 		}
 		token, expiresAt := svc.IssueToken()
 		return &LoginOutput{SetCookie: newSessionCookie(token, expiresAt).String()}, nil
@@ -104,10 +136,11 @@ func clearedSessionCookie() *http.Cookie {
 	}
 }
 
-// publicOperations don't require a session: logging in obviously can't require
-// one already, health is polled by the orchestrator, and logout must clear the
-// cookie even if the session already expired.
+// publicOperations don't require a session: logging in and setting up
+// obviously can't require one already, health is polled by the orchestrator,
+// and logout must clear the cookie even if the session already expired.
 var publicOperations = map[string]bool{
+	"setup":  true,
 	"login":  true,
 	"logout": true,
 	"health": true,
@@ -121,6 +154,10 @@ func requireSession(api huma.API, svc AuthService) func(huma.Context, func(huma.
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if publicOperations[ctx.Operation().OperationID] {
 			next(ctx)
+			return
+		}
+		if !svc.Configured() {
+			huma.WriteErr(api, ctx, http.StatusPreconditionRequired, "not set up yet: POST /setup first")
 			return
 		}
 		token, ok := readCookie(ctx, sessionCookie)

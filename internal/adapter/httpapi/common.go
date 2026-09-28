@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
@@ -77,6 +78,12 @@ func toMoney(m money.Money) Money {
 // Unexpected errors are logged and hidden from the client.
 func toHTTPError(ctx context.Context, op string, err error) error {
 	switch {
+	case errors.Is(err, auth.ErrWrongPassword):
+		return huma.Error401Unauthorized(err.Error())
+	case errors.Is(err, auth.ErrNotConfigured):
+		return huma.Error428PreconditionRequired(err.Error())
+	case errors.Is(err, auth.ErrAlreadyConfigured):
+		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, income.ErrInvalidInput),
 		errors.Is(err, exchange.ErrInvalidInput),
 		errors.Is(err, category.ErrInvalidInput),

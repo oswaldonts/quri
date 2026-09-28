@@ -45,8 +45,16 @@ func mustHash(password string) []byte {
 	return hash
 }
 
-// newTestRouter wires the real services with a fresh SQLite database, like main does.
+// newTestRouter wires the real services with a fresh SQLite database, like
+// main does, using a session already authenticated as testAuth.
 func newTestRouter(t *testing.T) http.Handler {
+	t.Helper()
+	return newTestRouterWithAuth(t, testAuth)
+}
+
+// newTestRouterWithAuth is newTestRouter with a caller-provided AuthService,
+// for tests that exercise the unconfigured (AUTH_LOCAL_CREDENTIALS) setup flow.
+func newTestRouterWithAuth(t *testing.T, authSvc AuthService) http.Handler {
 	t.Helper()
 	db, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -62,7 +70,7 @@ func newTestRouter(t *testing.T) http.Handler {
 	balanceRepo := sqlite.NewBalanceRepository(db)
 	budgetRepo := sqlite.NewBudgetRepository(db)
 	return NewRouter(Services{
-		Auth:       testAuth,
+		Auth:       authSvc,
 		Categories: categorySvc,
 		Incomes:    income.NewService(incomeRepo, categorySvc),
 		Balances:   balance.NewService(balanceRepo),

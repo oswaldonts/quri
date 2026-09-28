@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/localauth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
@@ -126,16 +127,55 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-// newAuthService reads the operator credentials. Both fail fast and unconditionally:
-// there is no insecure default for a service that guards financial data.
+// newAuthService picks one of two credential sources, and fails fast if
+// neither is set up: there is no insecure default for a service that guards
+// financial data.
+//
+//   - AUTH_PASSWORD_HASH + AUTH_SESSION_SECRET: the deployed mode (Nomad passes
+//     these explicitly; see deploy/nomad/go-income-mgr.nomad.hcl). Both required
+//     together so a half-set pair fails loudly instead of silently degrading.
+//   - AUTH_LOCAL_CREDENTIALS=1: for a binary with no deploy pipeline behind it
+//     (e.g. downloaded and run on someone's own machine, or the Wails desktop
+//     build). Credentials live in a local file; POST /setup sets the password
+//     the first time it runs.
 func newAuthService() (*auth.Service, error) {
 	hash := os.Getenv("AUTH_PASSWORD_HASH")
-	if hash == "" {
-		return nil, errors.New("AUTH_PASSWORD_HASH is required (generate one with: printf '%s' 'password' | go run ./cmd/hashpw)")
-	}
 	secret := os.Getenv("AUTH_SESSION_SECRET")
-	if secret == "" {
-		return nil, errors.New("AUTH_SESSION_SECRET is required (any long random string, e.g. openssl rand -hex 32)")
+	switch {
+	case hash != "" && secret != "":
+		return auth.NewService([]byte(hash), []byte(secret)), nil
+	case hash != "" || secret != "":
+		return nil, errors.New("set both AUTH_PASSWORD_HASH and AUTH_SESSION_SECRET, or neither " +
+			"(with AUTH_LOCAL_CREDENTIALS=1) to use the local setup flow")
+	case getenv("AUTH_LOCAL_CREDENTIALS", "") == "1":
+		return newLocalAuthService()
+	default:
+		return nil, errors.New("set AUTH_PASSWORD_HASH and AUTH_SESSION_SECRET (deployed mode), or " +
+			"AUTH_LOCAL_CREDENTIALS=1 to store credentials in a local file instead " +
+			"(generate a password hash with: printf '%s' 'password' | go run ./cmd/hashpw)")
 	}
-	return auth.NewService([]byte(hash), []byte(secret)), nil
+}
+
+// newLocalAuthService loads or, on first run, creates the local credentials
+// file next to the rest of this app's data on the current machine.
+func newLocalAuthService() (*auth.Service, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return nil, fmt.Errorf("locate config directory: %w", err)
+	}
+	store := localauth.NewStore(filepath.Join(configDir, "go-income-mgr", "credentials.json"))
+
+	secret, passwordHash, ok, err := store.Load()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		if secret, err = store.Init(); err != nil {
+			return nil, err
+		}
+	}
+	if passwordHash != nil {
+		return auth.NewService(passwordHash, secret), nil
+	}
+	return auth.NewUnconfiguredService(secret, store.SavePasswordHash(secret)), nil
 }

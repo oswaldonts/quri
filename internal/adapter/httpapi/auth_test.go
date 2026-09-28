@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
 )
 
 // sendRaw is like send but without attaching a session cookie, for testing the
@@ -92,6 +94,64 @@ func TestLoginIsRateLimited(t *testing.T) {
 		last = sendRaw(h, http.MethodPost, "/login", `{"password":"wrong"}`)
 	}
 	assertProblem(t, last, http.StatusTooManyRequests)
+}
+
+func TestUnconfiguredInstanceRequiresSetupFirst(t *testing.T) {
+	unconfigured := auth.NewUnconfiguredService([]byte("test-secret"), nil)
+	h := newTestRouterWithAuth(t, unconfigured)
+
+	// Protected routes must say "not set up" (428), not "log in first" (401):
+	// there is no password to log in with yet.
+	rec := sendRaw(h, http.MethodGet, "/periods/2026-08/incomes", "")
+	assertProblem(t, rec, http.StatusPreconditionRequired)
+
+	// health, login and logout stay reachable so a client can distinguish
+	// "server is up but unconfigured" from "server is down".
+	if rec := sendRaw(h, http.MethodGet, "/health", ""); rec.Code != http.StatusOK {
+		t.Errorf("GET /health = %d, want 200", rec.Code)
+	}
+	loginRec := sendRaw(h, http.MethodPost, "/login", `{"password":"anything"}`)
+	assertProblem(t, loginRec, http.StatusPreconditionRequired)
+}
+
+func TestSetupThenLogin(t *testing.T) {
+	unconfigured := auth.NewUnconfiguredService([]byte("test-secret"), nil)
+	h := newTestRouterWithAuth(t, unconfigured)
+
+	setupRec := sendRaw(h, http.MethodPost, "/setup", `{"password":"a-new-password"}`)
+	if setupRec.Code != http.StatusNoContent {
+		t.Fatalf("POST /setup = %d, want 204 (body: %s)", setupRec.Code, setupRec.Body)
+	}
+	cookies := setupRec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != sessionCookie {
+		t.Fatalf("setup cookies = %+v, want exactly one %q cookie (setup should log in immediately)",
+			cookies, sessionCookie)
+	}
+
+	rec := sendRaw(h, http.MethodGet, "/periods/2026-08/incomes", "", cookies[0])
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET with the session from setup = %d, want 200 (body: %s)", rec.Code, rec.Body)
+	}
+}
+
+func TestSetupOnlyWorksOnce(t *testing.T) {
+	unconfigured := auth.NewUnconfiguredService([]byte("test-secret"), nil)
+	h := newTestRouterWithAuth(t, unconfigured)
+
+	first := sendRaw(h, http.MethodPost, "/setup", `{"password":"first-password"}`)
+	if first.Code != http.StatusNoContent {
+		t.Fatalf("first POST /setup = %d, want 204", first.Code)
+	}
+	second := sendRaw(h, http.MethodPost, "/setup", `{"password":"second-password"}`)
+	assertProblem(t, second, http.StatusConflict)
+}
+
+func TestSetupRejectsShortPassword(t *testing.T) {
+	unconfigured := auth.NewUnconfiguredService([]byte("test-secret"), nil)
+	h := newTestRouterWithAuth(t, unconfigured)
+
+	rec := sendRaw(h, http.MethodPost, "/setup", `{"password":"short"}`)
+	assertProblem(t, rec, http.StatusUnprocessableEntity)
 }
 
 func TestLogoutClearsTheCookieAndWorksWithoutASession(t *testing.T) {
