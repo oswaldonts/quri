@@ -84,6 +84,16 @@ func TestLoginThenAccessProtectedRoute(t *testing.T) {
 	}
 }
 
+func TestLoginIsRateLimited(t *testing.T) {
+	h := newTestRouter(t)
+
+	var last *httptest.ResponseRecorder
+	for i := 0; i < loginBurst+1; i++ {
+		last = sendRaw(h, http.MethodPost, "/login", `{"password":"wrong"}`)
+	}
+	assertProblem(t, last, http.StatusTooManyRequests)
+}
+
 func TestLogoutClearsTheCookieAndWorksWithoutASession(t *testing.T) {
 	h := newTestRouter(t)
 

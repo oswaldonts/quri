@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"golang.org/x/time/rate"
 )
 
 // sessionCookie is the name of the cookie holding the session token.
@@ -33,18 +34,32 @@ type LoginOutput struct {
 	SetCookie string `header:"Set-Cookie"`
 }
 
+// loginRateLimit and loginBurst throttle POST /login regardless of outcome, so
+// guessing the operator password by brute force takes years even scripted.
+// There's a single operator, so one shared bucket (not per-IP) is enough and
+// avoids keeping a map of limiters alive for the life of the process.
+const (
+	loginRateLimit = 1 * time.Minute / 30 // ~30/min sustained
+	loginBurst     = 5
+)
+
 func registerAuth(api huma.API, svc AuthService) {
+	limiter := rate.NewLimiter(rate.Every(loginRateLimit), loginBurst)
+
 	huma.Register(api, huma.Operation{
 		OperationID: "login",
 		Method:      http.MethodPost,
 		Path:        "/login",
 		Summary:     "Log in",
 		Description: "Exchanges the operator password for a session cookie. There is a single " +
-			"operator: no username, no accounts.",
+			"operator: no username, no accounts. Rate limited to slow down password guessing.",
 		Tags:          []string{tagAuth},
 		DefaultStatus: http.StatusNoContent,
-		Errors:        []int{http.StatusUnauthorized},
+		Errors:        []int{http.StatusUnauthorized, http.StatusTooManyRequests},
 	}, func(ctx context.Context, in *LoginInput) (*LoginOutput, error) {
+		if !limiter.Allow() {
+			return nil, huma.Error429TooManyRequests("too many login attempts, slow down")
+		}
 		if err := svc.CheckPassword(in.Body.Password); err != nil {
 			return nil, huma.Error401Unauthorized("wrong password")
 		}
