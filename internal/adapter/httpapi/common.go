@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
@@ -101,7 +102,7 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		// The request is valid but conflicts with the current state.
 		return huma.Error409Conflict(err.Error())
 	default:
-		slog.ErrorContext(ctx, op, "error", err)
+		slog.ErrorContext(ctx, op, "error", err, "request_id", middleware.GetReqID(ctx))
 		return huma.Error500InternalServerError("internal error")
 	}
 }
