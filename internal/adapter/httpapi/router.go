@@ -34,6 +34,7 @@ amount is registered automatically as an income of kind "exchange".`
 
 // Services groups the use cases the HTTP layer depends on.
 type Services struct {
+	Auth       AuthService
 	Categories CategoryCatalog
 	Incomes    IncomeService
 	Expenses   ExpenseService
@@ -55,8 +56,10 @@ func NewRouter(s Services, logger *slog.Logger) http.Handler {
 	r.Use(middleware.Recoverer)
 
 	api := humachi.New(r, newConfig())
+	api.UseMiddleware(requireSession(api, s.Auth))
 
 	registerHealth(api)
+	registerAuth(api, s.Auth)
 	registerCategories(api, s.Categories)
 	registerIncomes(api, s.Incomes)
 	registerIncomeEdits(api, s.Incomes)
@@ -85,6 +88,7 @@ func newConfig() huma.Config {
 
 	config.Tags = []*huma.Tag{
 		{Name: tagSystem, Description: "Service status."},
+		{Name: tagAuth, Description: "Session login for the single operator. Every other endpoint requires it."},
 		{Name: tagCategories, Description: "Global catalog of expense categories. Categories are archived, never deleted."},
 		{Name: tagIncomes, Description: "Money received in a period."},
 		{Name: tagExpenses, Description: "Money spent in a period, by category."},
@@ -102,6 +106,7 @@ func newConfig() huma.Config {
 
 const (
 	tagSystem     = "System"
+	tagAuth       = "Auth"
 	tagCategories = "Categories"
 	tagIncomes    = "Incomes"
 	tagExpenses   = "Expenses"

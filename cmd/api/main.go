@@ -15,6 +15,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
@@ -44,6 +45,11 @@ func main() {
 }
 
 func run(ctx context.Context, logger *slog.Logger) error {
+	authService, err := newAuthService()
+	if err != nil {
+		return err
+	}
+
 	dbPath := getenv("DATABASE_PATH", "data/income.db")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
 		return fmt.Errorf("create database directory: %w", err)
@@ -72,6 +78,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	srv := &http.Server{
 		Addr: addr,
 		Handler: httpapi.NewRouter(httpapi.Services{
+			Auth:       authService,
 			Categories: categoryService,
 			Incomes:    incomeService,
 			Expenses:   expenseService,
@@ -117,4 +124,18 @@ func getenv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// newAuthService reads the operator credentials. Both fail fast and unconditionally:
+// there is no insecure default for a service that guards financial data.
+func newAuthService() (*auth.Service, error) {
+	hash := os.Getenv("AUTH_PASSWORD_HASH")
+	if hash == "" {
+		return nil, errors.New("AUTH_PASSWORD_HASH is required (generate one with: printf '%s' 'password' | go run ./cmd/hashpw)")
+	}
+	secret := os.Getenv("AUTH_SESSION_SECRET")
+	if secret == "" {
+		return nil, errors.New("AUTH_SESSION_SECRET is required (any long random string, e.g. openssl rand -hex 32)")
+	}
+	return auth.NewService([]byte(hash), []byte(secret)), nil
 }

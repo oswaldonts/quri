@@ -10,7 +10,10 @@
 #   - host_volume "go-income-mgr-data" owned by UID 65532 (distroless nonroot user):
 #     SQLite database file, persisted across deploys
 #
-# No secrets yet, so there is no vault block.
+# auth_password_hash and auth_session_secret are secrets: passed with -var (make deploy
+# reads them from the AUTH_PASSWORD_HASH/AUTH_SESSION_SECRET env vars), never written to
+# a vars.hcl file. No Vault integration yet, so they land in the task's env in plain text;
+# fine for a single host you control, not for a shared cluster.
 
 variable "image" {
   type        = string
@@ -27,6 +30,18 @@ variable "http_port" {
   type        = number
   description = "Static host port (loopback only through host_network \"local\")"
   default     = 8080
+}
+
+variable "auth_password_hash" {
+  type        = string
+  description = "bcrypt hash of the operator password (generate with: printf '%s' 'password' | go run ./cmd/hashpw)"
+  sensitive   = true
+}
+
+variable "auth_session_secret" {
+  type        = string
+  description = "Random string that signs session tokens; rotating it logs everyone out"
+  sensitive   = true
 }
 
 job "go-income-mgr" {
@@ -83,8 +98,10 @@ job "go-income-mgr" {
       }
 
       env {
-        PORT          = "8080"
-        DATABASE_PATH = "/data/income.db"
+        PORT                = "8080"
+        DATABASE_PATH       = "/data/income.db"
+        AUTH_PASSWORD_HASH  = var.auth_password_hash
+        AUTH_SESSION_SECRET = var.auth_session_secret
       }
 
       resources {

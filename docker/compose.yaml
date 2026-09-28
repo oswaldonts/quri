@@ -20,6 +20,9 @@ services:
     environment:
       PORT: "8080"
       DATABASE_PATH: /app/data/income.db
+      # Dev-only credentials, fine to commit: password is "dev". Never reused outside this file.
+      AUTH_PASSWORD_HASH: "$$2a$$10$$qJ7RRx0NCDic.vHV.E5q5eV0FtHKuKLHw3oeqcLjr50xQvpWLNVR."
+      AUTH_SESSION_SECRET: "dev-session-secret-not-for-production"
       HOME: /tmp
       GOCACHE: /go-cache/build
       GOMODCACHE: /go-cache/mod

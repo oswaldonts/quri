@@ -10,7 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
@@ -19,6 +22,28 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 )
+
+// testPassword is the operator password behind testAuth, used by the tests in
+// auth_test.go that exercise the login flow itself.
+const testPassword = "test-password"
+
+// testAuth backs every test router. send() attaches a session issued from it,
+// so ordinary handler tests don't need to log in first.
+var testAuth = auth.NewService(mustHash(testPassword), []byte("test-secret"))
+
+// testSessionCookie is a valid, unexpired session for testAuth.
+var testSessionCookie = func() *http.Cookie {
+	token, expiresAt := testAuth.IssueToken()
+	return newSessionCookie(token, expiresAt)
+}()
+
+func mustHash(password string) []byte {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}
 
 // newTestRouter wires the real services with a fresh SQLite database, like main does.
 func newTestRouter(t *testing.T) http.Handler {
@@ -37,6 +62,7 @@ func newTestRouter(t *testing.T) http.Handler {
 	balanceRepo := sqlite.NewBalanceRepository(db)
 	budgetRepo := sqlite.NewBudgetRepository(db)
 	return NewRouter(Services{
+		Auth:       testAuth,
 		Categories: categorySvc,
 		Incomes:    income.NewService(incomeRepo, categorySvc),
 		Balances:   balance.NewService(balanceRepo),
@@ -56,6 +82,7 @@ func send(h http.Handler, method, path, body string) *httptest.ResponseRecorder 
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	req.AddCookie(testSessionCookie)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec

@@ -7,7 +7,11 @@ GO      := $(COMPOSE) run --rm api go
 ENV   ?= dev
 TAG   ?= $(shell git rev-parse --short HEAD)
 IMAGE ?= go-income-mgr:$(TAG)
-JOB   := -var-file=$(ENV).vars.hcl -var image=$(IMAGE) go-income-mgr.nomad.hcl
+# AUTH_PASSWORD_HASH and AUTH_SESSION_SECRET must be exported in the shell (never in a
+# vars.hcl file); see deploy/nomad/go-income-mgr.nomad.hcl for how to generate each.
+JOB   := -var-file=$(ENV).vars.hcl -var image=$(IMAGE) \
+         -var auth_password_hash=$(AUTH_PASSWORD_HASH) -var auth_session_secret=$(AUTH_SESSION_SECRET) \
+         go-income-mgr.nomad.hcl
 
 export NOMAD_NAMESPACE := $(ENV)
 

@@ -3,18 +3,25 @@
 # spent in September). Each section can be copied on its own; run as a whole it goes
 # through a full month and then edits and deletes some of what it created.
 #
-#   API=http://localhost:8080 docs/api-examples.sh
+#   API=http://localhost:8080 AUTH_PASSWORD=dev docs/api-examples.sh
 #
 # Requires curl and jq. IDs returned by the API are captured into variables.
 set -euo pipefail
 
 API="${API:-http://localhost:8080}"
+AUTH_PASSWORD="${AUTH_PASSWORD:-dev}" # matches docker/compose.yaml's AUTH_PASSWORD_HASH
 P="2026-08"
 JSON=(-H "Content-Type: application/json")
+COOKIES="$(mktemp)"
+trap 'rm -f "$COOKIES"' EXIT
 # --fail-with-body stops the script on a 4xx/5xx and still prints the problem details.
-CURL=(curl -sS --fail-with-body)
+# -b/-c: send and update the session cookie every request needs after login.
+CURL=(curl -sS --fail-with-body -b "$COOKIES" -c "$COOKIES")
 
 section() { printf '\n=== %s\n' "$*"; }
+
+section "Log in"
+"${CURL[@]}" -X POST "$API/login" "${JSON[@]}" -d "{\"password\": \"$AUTH_PASSWORD\"}"
 
 section "System"
 "${CURL[@]}" "$API/health"
@@ -127,7 +134,7 @@ section "Deletes"
 "${CURL[@]}" -X PATCH "$API/categories/$PETS" "${JSON[@]}" -d '{"archived": true}' | jq -c '{name, archived}'
 
 section "Expected errors (problem+json)"
-curl -sS -X POST "$API/periods/$P/incomes" "${JSON[@]}" \
+curl -sS -b "$COOKIES" -X POST "$API/periods/$P/incomes" "${JSON[@]}" \
   -d '{"currency": "$", "amount": "10", "kind": "salary", "received_on": "2026-08-31"}' | jq -c '{status, detail, errors}'
-curl -sS -X POST "$API/periods/$P/exchanges" "${JSON[@]}" \
+curl -sS -b "$COOKIES" -X POST "$API/periods/$P/exchanges" "${JSON[@]}" \
   -d '{"from": "USD", "to": "ARS", "amount": "10", "exchanged_on": "2026-09-01"}' | jq -c '{status, detail}'
