@@ -1,0 +1,26 @@
+{
+  "name": "go-income-mgr-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && touch dist/.gitkeep",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "types": "openapi-typescript ${API_URL:-http://127.0.0.1:8080}/openapi.yaml -o src/lib/api-schema.d.ts"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^24.13.3",
+    "openapi-typescript": "^7.13.0",
+    "svelte": "^5.57.0",
+    "svelte-check": "^4.7.6",
+    "typescript": "~5.9",
+    "vite": "^8.3.0"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0"
+  }
+}

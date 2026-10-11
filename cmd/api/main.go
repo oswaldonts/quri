@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/localauth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/webui"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
@@ -25,6 +27,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
+	"github.com/oswaldoaquinas/go-income-mgr/web"
 )
 
 // shutdownTimeout bounds how long in-flight requests may take once a stop signal arrives.
@@ -77,21 +80,29 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo, sqlite.NewPeriodBounds(db))
 	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService)
 
+	api := httpapi.NewRouter(httpapi.Services{
+		Auth:       authService,
+		Categories: categoryService,
+		Incomes:    incomeService,
+		Expenses:   expenseService,
+		Balances:   balanceService,
+		Summaries:  summaryService,
+		Budgets:    budgetService,
+		Rates:      exchangeService,
+		Exchanges:  exchangeService,
+		Accounts:   accountService,
+	}, logger)
+
+	// The frontend is embedded in the binary and served from the same origin as the API.
+	files := web.Files()
+	if _, err := fs.Stat(files, "index.html"); err != nil {
+		logger.Warn("web UI not built, serving the API only (build it with: make web-build)")
+	}
+
 	addr := ":" + getenv("PORT", "8080")
 	srv := &http.Server{
-		Addr: addr,
-		Handler: httpapi.NewRouter(httpapi.Services{
-			Auth:       authService,
-			Categories: categoryService,
-			Incomes:    incomeService,
-			Expenses:   expenseService,
-			Balances:   balanceService,
-			Summaries:  summaryService,
-			Budgets:    budgetService,
-			Rates:      exchangeService,
-			Exchanges:  exchangeService,
-			Accounts:   accountService,
-		}, logger),
+		Addr:              addr,
+		Handler:           webui.Handler(files, api),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

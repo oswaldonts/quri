@@ -1,7 +1,7 @@
 # Development environment: the Go toolchain runs in a container, nothing is installed on the host.
 # Run from the repository root:
 #
-#   docker compose -f docker/compose.yaml up                            # run the API on 127.0.0.1:8080
+#   docker compose -f docker/compose.yaml up                            # run the API on 127.0.0.1:8081
 #   docker compose -f docker/compose.yaml run --rm api go test ./...    # run any go command
 #   docker compose -f docker/compose.yaml run --rm sqlc generate        # regenerate Go code from the SQL queries
 #
@@ -30,7 +30,38 @@ services:
       - ..:/app
       - ${HOME}/.cache/go-container:/go-cache
     ports:
-      - "127.0.0.1:8080:8080"
+      # 8081 on the host: 8080 belongs to the Nomad job. Override with API_PORT=<port>.
+      - "127.0.0.1:${API_PORT:-8081}:8080"
+    # "go run" compiles first, so give it time before reporting unhealthy. Lets the web
+    # service (depends_on) wait until the API answers.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+      start_period: 120s
+
+  # Frontend (web/): Vite dev server with hot reload on 127.0.0.1:5173, proxying API calls
+  # to the api service. Start with "make web-dev"; run npm commands with
+  #   docker compose -f docker/compose.yaml run --rm web npm run <script>
+  web:
+    image: node:24-alpine
+    working_dir: /app/web
+    user: "1000:1000"
+    command: npm run dev -- --host 0.0.0.0
+    environment:
+      API_URL: http://api:8080
+      HOME: /tmp
+      npm_config_cache: /npm-cache
+    volumes:
+      - ..:/app
+      - ${HOME}/.cache/npm-container:/npm-cache
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+    profiles: [web] # not started by "docker compose up"
 
   sqlc:
     image: sqlc/sqlc:1.31.1

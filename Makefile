@@ -2,6 +2,8 @@
 
 COMPOSE := docker compose -f docker/compose.yaml
 GO      := $(COMPOSE) run --rm api go
+# --no-deps: npm commands don't need the API running (web-types is the exception).
+NPM     := $(COMPOSE) run --rm --no-deps web npm
 
 # Deployment: the image tag is the commit, so a tag always maps to the exact code it was built from.
 ENV   ?= dev
@@ -16,14 +18,14 @@ JOB   := -var-file=$(ENV).vars.hcl -var image=$(IMAGE) \
 export NOMAD_NAMESPACE := $(ENV)
 
 .DEFAULT_GOAL := help
-.PHONY: help run down test vet fmt check sqlc image plan deploy status logs clean-tree
+.PHONY: help run down test vet fmt check sqlc web-dev web-build web-check web-types image plan deploy status logs clean-tree
 
 help: ## List the targets
-	@awk -F ':.*## ' '/^## / {print "\n" substr($$0, 4)} /^[a-z-]+:.*## / {printf "  %-8s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk -F ':.*## ' '/^## / {print "\n" substr($$0, 4)} /^[a-z-]+:.*## / {printf "  %-10s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 ## Development
 
-run: ## Run the API with go run on 127.0.0.1:8080 (stop the Nomad job first: same port)
+run: ## Run the API with go run on 127.0.0.1:8081 (8080 is the Nomad job)
 	$(COMPOSE) up
 
 down: ## Stop the development containers
@@ -38,12 +40,26 @@ vet: ## Run go vet
 fmt: ## Format the code with gofmt
 	$(COMPOSE) run --rm api gofmt -l -w .
 
-check: vet test ## vet + tests + fail if any file is not gofmt-formatted
+check: vet test web-check ## vet + tests + frontend type-check + fail if any file is not gofmt-formatted
 	@unformatted=$$($(COMPOSE) run --rm api gofmt -l . 2>/dev/null); \
 	if [ -n "$$unformatted" ]; then echo "not formatted (run make fmt):"; echo "$$unformatted"; exit 1; fi
 
 sqlc: ## Regenerate Go code from the SQL queries
 	$(COMPOSE) run --rm sqlc generate
+
+## Frontend (web/, Svelte)
+
+web-dev: ## Run the frontend with hot reload on 127.0.0.1:5173 (starts the API too)
+	$(COMPOSE) up web
+
+web-build: ## Build the frontend into web/dist, which the Go binary embeds
+	$(NPM) run build
+
+web-check: ## Type-check the frontend
+	$(NPM) run check
+
+web-types: ## Regenerate the frontend's API types from the API's OpenAPI spec (starts the API)
+	$(COMPOSE) run --rm web npm run types
 
 ## Deployment (ENV=dev by default)
 

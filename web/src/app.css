@@ -1,0 +1,512 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1b1f24;
+  --muted: #667085;
+  --border: #d9dde3;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --danger: #c2271d;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418;
+    --surface: #1b2027;
+    --text: #e8eaed;
+    --muted: #9aa4b2;
+    --border: #2d343d;
+    --accent: #5b8def;
+    --accent-text: #0b1220;
+    --danger: #ff7b72;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1,
+h2 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 1.35rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+  margin: 0;
+}
+
+.negative {
+  color: var(--danger);
+}
+
+.center {
+  text-align: center;
+  margin-top: 30vh;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+input {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+/* Login, setup and error screens */
+.card {
+  max-width: 22rem;
+  margin: 15vh auto 0;
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 1rem;
+}
+
+.card p {
+  margin: 0;
+}
+
+.card form {
+  display: grid;
+  gap: 1rem;
+}
+
+.card label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+/* Signed-in layout */
+.bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.page {
+  max-width: 90rem;
+  margin: 0 auto;
+  padding: 1.25rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stale {
+  opacity: 0.6;
+}
+
+.currency {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.figures dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.figures dd {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+th {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.num {
+  text-align: right;
+}
+
+/* Income and expense lists with their entry forms */
+.panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.panel p {
+  margin: 0;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.entry-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.entry-form label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.entry-form .wide {
+  grid-column: 1 / -1;
+}
+
+.entry-form .row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+}
+
+.entry-form .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.entry-form label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+select {
+  font: inherit;
+  color: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.badge {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.entry-form input:not([type='checkbox']),
+.entry-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.figures dd.detail {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.formula {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.modes,
+.segmented {
+  display: inline-flex;
+}
+
+.modes button,
+.segmented button {
+  border-radius: 0;
+  margin-left: -1px;
+}
+
+.modes button:first-child,
+.segmented button:first-child {
+  border-radius: 6px 0 0 6px;
+  margin-left: 0;
+}
+
+.modes button:last-child,
+.segmented button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.modes button[aria-pressed='true'],
+.segmented button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.sheets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.period-title,
+.notice {
+  margin: 0;
+}
+
+.notice {
+  font-size: 0.85rem;
+}
+
+.rate-box {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.rate-box p {
+  margin: 0;
+}
+
+.entry-form .inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.entry-form .inline input {
+  width: 9rem;
+}
+
+button.link.neutral {
+  color: var(--accent);
+  margin-left: 0.5rem;
+}
+
+/* Collapsible category groups */
+/* Flat rows divided by lines, like the tables: no box inside the panel's own box */
+details.group {
+  border-top: 1px solid var(--border);
+}
+
+details.group:last-of-type {
+  border-bottom: 1px solid var(--border);
+}
+
+details > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 0.25rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+details > summary:hover {
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Chevron drawn with borders: no dependency on the font having a triangle glyph */
+details > summary::before {
+  content: '';
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.6rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+}
+
+details[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+details > summary > :first-child {
+  flex: 1;
+}
+
+.group-title {
+  font-weight: 600;
+}
+
+.group-total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.group-total .muted {
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+
+details.group table {
+  margin: 0 0 0.75rem;
+}
+
+/* Inline edit of an account balance */
+.inline-edit {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.inline-edit input {
+  width: 8rem;
+}
+
+tfoot td {
+  font-weight: 600;
+}
+
+/* Reports: horizontal bars */
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.bars li {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) 2fr auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bar-track {
+  height: 0.6rem;
+  background: var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.panel h3 {
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+}
+
+.scroll-x {
+  overflow-x: auto;
+}
+
+@media (min-width: 40rem) {
+  .entry-form .row .grow {
+    grid-column: span 2;
+  }
+}
