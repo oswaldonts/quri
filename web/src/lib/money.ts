@@ -1,17 +1,13 @@
-import type { Schemas } from './api'
+import { currencies } from './currencies.svelte'
 
 // Amounts travel as decimal strings ("1330.00") so no precision is lost to floating point.
 // Intl.NumberFormat formats a numeric string exactly, so there is no Number() round trip.
 const number = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-// Currencies whose symbol is unambiguous here. ARS, COP and VES would all be "$", so they
-// keep their code.
-const symbols: Record<string, string> = { USD: '$', PEN: 'S/ ' }
-
 export function formatMoney(amount: string, currency: string): string {
   const negative = amount.startsWith('-') && /[1-9]/.test(amount)
   const digits = negative ? amount.slice(1) : amount
-  const symbol = symbols[currency]
+  const symbol = currencies.symbol(currency)
   let formatted: string
   try {
     formatted = number.format(digits as Intl.StringNumericLiteral)
@@ -19,7 +15,8 @@ export function formatMoney(amount: string, currency: string): string {
     // An engine without string support: show the digits as the API sent them.
     formatted = digits
   }
-  const body = symbol ? `${symbol}${formatted}` : `${currency} ${formatted}`
+  // One-character symbols ($, €) stick to the number; longer ones (S/) and codes get a space.
+  const body = symbol.length === 1 ? `${symbol}${formatted}` : `${symbol || currency} ${formatted}`
   return negative ? `-${body}` : body
 }
 
@@ -28,11 +25,8 @@ export function isNegative(amount: string): boolean {
   return amount.startsWith('-') && /[1-9]/.test(amount)
 }
 
-export type Currency = Schemas['RegisterIncomeInputBody']['currency']
-
-// The compiler checks every entry against the API's enum; a currency the API adds
-// is missing here until it is listed.
-export const currencies: Currency[] = ['ARS', 'COP', 'PEN', 'USD', 'VES']
+// A currency code registered in Ajustes, e.g. "PEN".
+export type Currency = string
 
 const amountPattern = /^[0-9]{1,13}(\.[0-9]{1,2})?$/
 

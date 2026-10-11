@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, apiErrorMessage, connectionError, type Schemas } from './api'
   import { shift } from './dates'
+  import { groupNames } from './groups'
   import { compareAmounts, formatMoney, type Currency } from './money'
 
   let { period, currency, projected, summary }: {
@@ -9,16 +10,6 @@
     projected: boolean
     summary: Schemas['CurrencySummary'] | undefined
   } = $props()
-
-  const groupNames: Record<string, string> = {
-    needs: 'Necesidades',
-    lifestyle: 'Estilo de vida',
-    growth: 'Crecimiento',
-    obligations: 'Obligaciones',
-    support: 'Apoyo',
-    other: 'Otros',
-    system: 'Cambios de moneda',
-  }
 
   // Share of the biggest value, for the bar widths (display only).
   const share = (amount: string, max: string) => {

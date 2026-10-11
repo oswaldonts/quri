@@ -2,7 +2,8 @@
   import { tick } from 'svelte'
   import { api, connectionError, failureMessage, type Schemas } from './api'
   import { today } from './dates'
-  import { convert, currencies, formatMoney, parseAmount, parseRate, type Currency } from './money'
+  import { currencies } from './currencies.svelte'
+  import { convert, formatMoney, parseAmount, parseRate, type Currency } from './money'
 
   // currency is the open sheet: the list shows the exchanges that touch it, and the form
   // starts as "receive this currency".
@@ -19,12 +20,13 @@
   let loadError = $state('')
 
   let open = $state(false)
-  let from = $state<Currency>('USD')
-  let to = $state<Currency>('PEN')
+  let from = $state<Currency>('')
+  let to = $state<Currency>('')
 
+  // The sheet's currency is what you receive; what you give starts as the first other one registered.
   $effect(() => {
     to = currency
-    if (from === currency) from = currency === 'USD' ? 'PEN' : 'USD'
+    if (!from || from === currency) from = currencies.codes.find((c) => c !== currency) ?? ''
   })
   let amount = $state('')
   let exchangedOn = $state(today())
@@ -45,6 +47,7 @@
 
   const pair = $derived(`${from}-${to}`)
   const samePair = $derived(from === to)
+  const noPair = $derived(!from || !to)
   const parsedAmount = $derived(parseAmount(amount))
   const editing = $derived(all.find((e) => e.id === editingId))
   const received = $derived(parsedAmount && rate ? convert(parsedAmount, rate) : null)
@@ -67,7 +70,7 @@
 
   $effect(() => {
     void rateVersion
-    if (samePair) return
+    if (samePair || noPair) return
     const controller = new AbortController()
     rate = undefined
     editingRate = false
@@ -204,13 +207,13 @@
         <label>
           Das
           <select bind:value={from} disabled={!!editingId}>
-            {#each currencies as c (c)}<option value={c}>{c}</option>{/each}
+            {#each currencies.codes as c (c)}<option value={c}>{c}</option>{/each}
           </select>
         </label>
         <label>
           Recibes
           <select bind:value={to} disabled={!!editingId}>
-            {#each currencies as c (c)}<option value={c}>{c}</option>{/each}
+            {#each currencies.codes as c (c)}<option value={c}>{c}</option>{/each}
           </select>
         </label>
         <label>
@@ -231,6 +234,8 @@
           {#if parsedAmount}
             <p>Recibirás <strong>{formatMoney(convert(parsedAmount, editing.rate), to)}</strong> <span class="muted">(se trunca a centavos)</span></p>
           {/if}
+        {:else if noPair}
+          <p class="muted">Registra otra moneda en Ajustes para poder hacer cambios.</p>
         {:else if samePair}
           <p class="error">Elige monedas distintas.</p>
         {:else if rate === undefined}
@@ -272,7 +277,7 @@
           <input type="checkbox" bind:checked={planned} />
           Planeado (aún no ocurre)
         </label>
-        <button class="primary" disabled={busy || !amount || (!editingId && (samePair || !rate))}>{editingId ? 'Guardar cambios' : 'Guardar cambio'}</button>
+        <button class="primary" disabled={busy || !amount || (!editingId && (noPair || samePair || !rate))}>{editingId ? 'Guardar cambios' : 'Guardar cambio'}</button>
         {#if editingId}<button type="button" class="link neutral" onclick={cancel}>Cancelar</button>{/if}
       </div>
     </form>

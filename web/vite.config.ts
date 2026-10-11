@@ -13,6 +13,7 @@ const apiPaths = [
   '/periods',
   '/categories',
   '/accounts',
+  '/currencies',
   '/trends',
   '/openapi.yaml',
   '/docs',

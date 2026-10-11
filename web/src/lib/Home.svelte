@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import { api, apiErrorMessage, connectionError, type Schemas } from './api'
   import { monthName, shift, toPeriod } from './dates'
   import Accounts from './Accounts.svelte'
@@ -6,7 +7,9 @@
   import Expenses from './Expenses.svelte'
   import Incomes from './Incomes.svelte'
   import Reports from './Reports.svelte'
-  import { currencies, formatMoney, isNegative, isZero, type Currency } from './money'
+  import Settings from './Settings.svelte'
+  import { currencies } from './currencies.svelte'
+  import { formatMoney, isNegative, isZero, type Currency } from './money'
   import { session } from './session.svelte'
 
   const periodPattern = /^\d{4}-\d{2}$/
@@ -32,7 +35,7 @@
   const startOf: Record<Mode, string> = { past: shift(live, -1), current: live, plan: thisMonth }
 
   let mode = $state<Mode>('current')
-  let view = $state<'movements' | 'reports'>('movements')
+  let view = $state<'movements' | 'reports' | 'settings'>('movements')
   // Lets the user see how the planned entries would change what is available.
   let includePlanned = $state(false)
   const projected = $derived(mode === 'plan' || includePlanned)
@@ -52,21 +55,51 @@
 
   // One sheet per currency: the whole screen shows a single currency at a time. A sheet exists
   // when the period has movements in it or the user added it (e.g. the currency of a trip).
-  let sheet = $state<Currency>('PEN')
+  let sheet = $state<Currency>('')
   let added = $state<Currency[]>([])
   const sheets = $derived.by<Currency[]>(() => {
     const present = new Set<string>([...added, ...(summary?.currencies ?? []).map((c) => c.currency), sheet])
-    return currencies.filter((c) => present.has(c))
+    return currencies.codes.filter((c) => present.has(c))
   })
+
+  const sheetKey = 'sheet'
+  function remembered(): string {
+    try {
+      return localStorage.getItem(sheetKey) ?? ''
+    } catch {
+      return ''
+    }
+  }
+
+  // The first sheet: the one used last time, else the first currency with movements, else the
+  // first registered one. A sheet whose currency was removed in Ajustes is replaced the same way.
+  $effect(() => {
+    if (!currencies.loaded) return
+    if (sheet && currencies.codes.includes(sheet)) return
+    const last = remembered()
+    if (currencies.codes.includes(last)) sheet = last
+    else if (summary || loadError) sheet = summary?.currencies?.[0]?.currency ?? currencies.codes[0] ?? ''
+  })
+
+  $effect(() => {
+    if (!sheet) return
+    try {
+      localStorage.setItem(sheetKey, sheet)
+    } catch {
+      // Remembering the sheet is a convenience.
+    }
+  })
+
+  onMount(() => currencies.load())
 
   function step(direction: number) {
     sheet = sheets[(sheets.indexOf(sheet) + direction + sheets.length) % sheets.length]
   }
 
   function addSheet(code: string) {
-    if (!currencies.includes(code as Currency)) return
-    added = [...added, code as Currency]
-    sheet = code as Currency
+    if (!currencies.codes.includes(code)) return
+    added = [...added, code]
+    sheet = code
   }
 
   let summary = $state<Schemas['Summary'] | null>(null)
@@ -113,8 +146,12 @@
   <div class="modes" role="group" aria-label="Vista">
     <button aria-pressed={view === 'movements'} onclick={() => (view = 'movements')}>Movimientos</button>
     <button aria-pressed={view === 'reports'} onclick={() => (view = 'reports')}>Reportes</button>
+    <button aria-pressed={view === 'settings'} onclick={() => (view = 'settings')}>Ajustes</button>
   </div>
 
+  {#if view === 'settings'}
+    <Settings {period} onchange={() => (currencies.load(), version++)} />
+  {:else}
   <div class="modes" role="group" aria-label="Modo">
     {#each modes as m (m.id)}
       <button aria-pressed={mode === m.id} onclick={() => setMode(m.id)}>{m.label}</button>
@@ -165,10 +202,10 @@
       {#if sheets.length > 1}
         <button aria-label="Moneda siguiente" onclick={() => step(1)}>›</button>
       {/if}
-      {#if sheets.length < currencies.length}
+      {#if sheets.length < currencies.codes.length}
         <select aria-label="Agregar moneda" value="" onchange={(e) => (addSheet(e.currentTarget.value), (e.currentTarget.value = ''))}>
           <option value="">+ Moneda</option>
-          {#each currencies.filter((c) => !sheets.includes(c)) as c (c)}<option value={c}>{c}</option>{/each}
+          {#each currencies.codes.filter((c) => !sheets.includes(c)) as c (c)}<option value={c}>{c}</option>{/each}
         </select>
       {/if}
     </div>
@@ -271,5 +308,6 @@
     <Incomes {period} currency={sheet} planning={mode === 'plan'} refresh={version} onchange={() => version++} />
     <Exchanges {period} currency={sheet} planning={mode === 'plan'} refresh={version} onchange={() => version++} />
     <Expenses {period} currency={sheet} planning={mode === 'plan'} refresh={version} onchange={() => version++} />
+  {/if}
   {/if}
 </main>

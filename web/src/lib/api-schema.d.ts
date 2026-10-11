@@ -87,6 +87,48 @@ export interface paths {
         patch: operations["update-category"];
         trace?: never;
     };
+    "/currencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the registered currencies */
+        get: operations["list-currencies"];
+        put?: never;
+        /**
+         * Register a currency
+         * @description Amounts can only be in registered currencies. A few common ones come registered; add the ones you use.
+         */
+        post: operations["create-currency"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/currencies/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a currency
+         * @description Only while no income, expense, account, balance, budget, rate or exchange uses it.
+         */
+        delete: operations["delete-currency"];
+        options?: never;
+        head?: never;
+        /** Change the symbol of a currency */
+        patch: operations["update-currency"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -622,11 +664,10 @@ export interface components {
             amount: string;
             category_id?: string;
             /**
-             * @description ISO 4217 currency code.
+             * @description Currency code registered in /currencies.
              * @example USD
-             * @enum {string}
              */
-            currency?: "ARS" | "COP" | "PEN" | "USD" | "VES";
+            currency?: string;
             /** @example Chocolate Milky */
             description?: string;
             /** Format: date */
@@ -691,11 +732,10 @@ export interface components {
              */
             balance: string;
             /**
-             * @description ISO 4217 currency code.
+             * @description Currency code registered in /currencies.
              * @example USD
-             * @enum {string}
              */
-            currency: "ARS" | "COP" | "PEN" | "USD" | "VES";
+            currency: string;
             /** @enum {string} */
             kind: "bank" | "cash";
             /**
@@ -711,6 +751,24 @@ export interface components {
             group: "needs" | "lifestyle" | "growth" | "obligations" | "support" | "other";
             /** @example Mascotas */
             name: string;
+        };
+        CreateCurrencyInputBody: {
+            /**
+             * @description Three-letter code, e.g. an ISO 4217 one.
+             * @example EUR
+             */
+            code: string;
+            /** @example € */
+            symbol?: string;
+        };
+        Currency: {
+            /** @example EUR */
+            code: string;
+            /**
+             * @description Shown before amounts. Empty: the code is shown.
+             * @example €
+             */
+            symbol: string;
         };
         CurrencySummary: {
             /** @description carried_over + income total − spent: the money that should be left. */
@@ -1027,9 +1085,8 @@ export interface components {
             /**
              * @description Common currency, used by items without their own.
              * @example USD
-             * @enum {string}
              */
-            currency?: "ARS" | "COP" | "PEN" | "USD" | "VES";
+            currency?: string;
             items: components["schemas"]["BatchItem"][] | null;
             /**
              * Format: date
@@ -1061,9 +1118,8 @@ export interface components {
             /**
              * @description Source currency (spent).
              * @example USD
-             * @enum {string}
              */
-            from: "ARS" | "COP" | "PEN" | "USD" | "VES";
+            from: string;
             /**
              * @description planned: expected, not happened yet (only counts in view=projected). confirmed (default): happened.
              * @enum {string}
@@ -1072,9 +1128,8 @@ export interface components {
             /**
              * @description Target currency (received).
              * @example USD
-             * @enum {string}
              */
-            to: "ARS" | "COP" | "PEN" | "USD" | "VES";
+            to: string;
         };
         RegisterExpenseInputBody: {
             /** @description Account the money comes out of (see /accounts), in the same currency as the expense. Its balance goes down by the amount once confirmed. */
@@ -1090,11 +1145,10 @@ export interface components {
              */
             category_id: string;
             /**
-             * @description ISO 4217 currency code.
+             * @description Currency code registered in /currencies.
              * @example USD
-             * @enum {string}
              */
-            currency: "ARS" | "COP" | "PEN" | "USD" | "VES";
+            currency: string;
             /** @example Chocolate Milky */
             description?: string;
             /**
@@ -1127,11 +1181,10 @@ export interface components {
              */
             category_id?: string;
             /**
-             * @description ISO 4217 currency code.
+             * @description Currency code registered in /currencies.
              * @example USD
-             * @enum {string}
              */
-            currency: "ARS" | "COP" | "PEN" | "USD" | "VES";
+            currency: string;
             /** @example Sueldo julio */
             description?: string;
             /**
@@ -1223,6 +1276,10 @@ export interface components {
             group?: "needs" | "lifestyle" | "growth" | "obligations" | "support" | "other";
             name?: string;
         };
+        UpdateCurrencyInputBody: {
+            /** @example € */
+            symbol: string;
+        };
         UpdateExchangeInputBody: {
             /** @description Source amount; the target is recomputed with the exchange's own rate. */
             amount?: string;
@@ -1241,11 +1298,10 @@ export interface components {
             amount?: string;
             category_id?: string;
             /**
-             * @description ISO 4217 currency code.
+             * @description Currency code registered in /currencies.
              * @example USD
-             * @enum {string}
              */
-            currency?: "ARS" | "COP" | "PEN" | "USD" | "VES";
+            currency?: string;
             description?: string;
             /** Format: date */
             spent_on?: string;
@@ -1262,11 +1318,10 @@ export interface components {
             /** @description Contribution category; an empty string removes it. */
             category_id?: string;
             /**
-             * @description ISO 4217 currency code.
+             * @description Currency code registered in /currencies.
              * @example USD
-             * @enum {string}
              */
-            currency?: "ARS" | "COP" | "PEN" | "USD" | "VES";
+            currency?: string;
             description?: string;
             /** @enum {string} */
             kind?: "salary" | "extra";
@@ -1630,6 +1685,195 @@ export interface operations {
             };
         };
     };
+    "list-currencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Currency"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-currency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCurrencyInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Currency"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-currency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-currency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCurrencyInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Currency"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     health: {
         parameters: {
             query?: never;
@@ -1847,8 +2091,8 @@ export interface operations {
             path: {
                 /** @description Month the money was earned (YYYY-MM). */
                 period: string;
-                /** @description ISO 4217 currency code. */
-                currency: "ARS" | "COP" | "PEN" | "USD" | "VES";
+                /** @description Currency code registered in /currencies. */
+                currency: string;
             };
             cookie?: never;
         };
@@ -1894,8 +2138,8 @@ export interface operations {
             path: {
                 /** @description Month the money was earned (YYYY-MM). */
                 period: string;
-                /** @description ISO 4217 currency code. */
-                currency: "ARS" | "COP" | "PEN" | "USD" | "VES";
+                /** @description Currency code registered in /currencies. */
+                currency: string;
             };
             cookie?: never;
         };
@@ -1995,8 +2239,8 @@ export interface operations {
                 /** @description Month the money was earned (YYYY-MM). */
                 period: string;
                 category_id: string;
-                /** @description ISO 4217 currency code. */
-                currency: "ARS" | "COP" | "PEN" | "USD" | "VES";
+                /** @description Currency code registered in /currencies. */
+                currency: string;
             };
             cookie?: never;
         };
@@ -2043,8 +2287,8 @@ export interface operations {
                 /** @description Month the money was earned (YYYY-MM). */
                 period: string;
                 category_id: string;
-                /** @description ISO 4217 currency code. */
-                currency: "ARS" | "COP" | "PEN" | "USD" | "VES";
+                /** @description Currency code registered in /currencies. */
+                currency: string;
             };
             cookie?: never;
         };
@@ -3147,8 +3391,8 @@ export interface operations {
             path: {
                 /** @description Month the money was earned (YYYY-MM). */
                 period: string;
-                /** @description ISO 4217 currency code. */
-                currency: "ARS" | "COP" | "PEN" | "USD" | "VES";
+                /** @description Currency code registered in /currencies. */
+                currency: string;
             };
             cookie?: never;
         };
@@ -3240,8 +3484,8 @@ export interface operations {
                 from: string;
                 /** @description Last period, included (at most 24 months). */
                 to: string;
-                /** @description ISO 4217 currency code. */
-                currency: "ARS" | "COP" | "PEN" | "USD" | "VES";
+                /** @description Currency code registered in /currencies. */
+                currency: string;
                 /** @description confirmed (default): only what happened. projected: also planned entries. */
                 view?: "confirmed" | "projected";
             };
