@@ -42,6 +42,11 @@ type Category struct {
 	CreatedAt  string
 }
 
+type Currency struct {
+	Code   string
+	Symbol string
+}
+
 type Exchange struct {
 	ID              string
 	Period          string

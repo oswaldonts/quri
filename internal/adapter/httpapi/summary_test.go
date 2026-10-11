@@ -83,5 +83,5 @@ func TestCurrencySummaryWithoutActivity(t *testing.T) {
 		len(s.Expenses) != 0 || s.Real != "" {
 		t.Errorf("empty ARS summary = %+v", s)
 	}
-	assertProblem(t, send(h, http.MethodGet, "/periods/2030-01/summary/EUR", ""), http.StatusUnprocessableEntity)
+	assertProblem(t, send(h, http.MethodGet, "/periods/2030-01/summary/EURO", ""), http.StatusUnprocessableEntity)
 }

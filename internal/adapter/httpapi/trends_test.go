@@ -36,10 +36,10 @@ func TestTrends(t *testing.T) {
 func TestTrendsErrors(t *testing.T) {
 	h := newTestRouter(t)
 	for _, query := range []string{
-		"?from=2026-08&to=2026-06&currency=PEN", // from after to
-		"?from=2024-01&to=2026-06&currency=PEN", // more than 24 months
-		"?from=2026-06&to=2026-08&currency=EUR", // unsupported currency
-		"?from=2026-06&to=2026-08",              // currency missing
+		"?from=2026-08&to=2026-06&currency=PEN",  // from after to
+		"?from=2024-01&to=2026-06&currency=PEN",  // more than 24 months
+		"?from=2026-06&to=2026-08&currency=EURO", // malformed currency
+		"?from=2026-06&to=2026-08",               // currency missing
 	} {
 		assertProblem(t, send(h, http.MethodGet, "/trends"+query, ""), http.StatusUnprocessableEntity)
 	}

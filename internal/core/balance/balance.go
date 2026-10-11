@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
@@ -39,13 +40,14 @@ type Repository interface {
 
 // Service holds the balance use cases.
 type Service struct {
-	repo Repository
-	now  func() time.Time
+	repo       Repository
+	currencies currency.Checker
+	now        func() time.Time
 }
 
 // NewService returns a Service backed by repo.
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo, now: time.Now}
+func NewService(repo Repository, currencies currency.Checker) *Service {
+	return &Service{repo: repo, currencies: currencies, now: time.Now}
 }
 
 // SetInput carries the real balance of a currency in a period.
@@ -64,6 +66,9 @@ func (s *Service) Set(ctx context.Context, in SetInput) (Balance, error) {
 	currency, err := money.ParseCurrency(in.Currency)
 	if err != nil {
 		return Balance{}, invalid(err)
+	}
+	if err := s.currencies.Require(ctx, currency); err != nil {
+		return Balance{}, err
 	}
 	amount, err := money.Parse(in.Amount, currency)
 	if err != nil {

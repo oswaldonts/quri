@@ -23,6 +23,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
@@ -68,17 +69,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// Wiring: adapters are created here and injected into the core.
 	categoryRepo := sqlite.NewCategoryRepository(db)
 	categoryService := category.NewService(categoryRepo, categoryRepo)
+	currencyService := currency.NewService(sqlite.NewCurrencyRepository(db))
 	incomeRepo := sqlite.NewIncomeRepository(db)
 	expenseRepo := sqlite.NewExpenseRepository(db)
 	balanceRepo := sqlite.NewBalanceRepository(db)
-	incomeService := income.NewService(incomeRepo, categoryService)
-	balanceService := balance.NewService(balanceRepo)
-	accountService := account.NewService(sqlite.NewAccountRepository(db), expenseRepo)
-	expenseService := expense.NewService(expenseRepo, categoryService, accountService)
+	incomeService := income.NewService(incomeRepo, categoryService, currencyService)
+	balanceService := balance.NewService(balanceRepo, currencyService)
+	accountService := account.NewService(sqlite.NewAccountRepository(db), expenseRepo, currencyService)
+	expenseService := expense.NewService(expenseRepo, categoryService, accountService, currencyService)
 	budgetRepo := sqlite.NewBudgetRepository(db)
-	budgetService := budget.NewService(budgetRepo, categoryService)
+	budgetService := budget.NewService(budgetRepo, categoryService, currencyService)
 	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo, sqlite.NewPeriodBounds(db))
-	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService)
+	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService, currencyService)
 
 	api := httpapi.NewRouter(httpapi.Services{
 		Auth:       authService,
@@ -91,6 +93,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Rates:      exchangeService,
 		Exchanges:  exchangeService,
 		Accounts:   accountService,
+		Currencies: currencyService,
 	}, logger)
 
 	// The frontend is embedded in the binary and served from the same origin as the API.

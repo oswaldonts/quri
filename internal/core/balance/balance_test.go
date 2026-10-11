@@ -42,7 +42,7 @@ func (f *fakeRepo) Delete(_ context.Context, p period.Period, c money.Currency) 
 
 func newTestService() (*Service, *fakeRepo) {
 	repo := &fakeRepo{byKey: map[key]Balance{}}
-	s := NewService(repo)
+	s := NewService(repo, anyCurrency{})
 	s.now = func() time.Time { return time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC) }
 	return s, repo
 }
@@ -80,7 +80,7 @@ func TestSetValidation(t *testing.T) {
 		in   SetInput
 	}{
 		{"bad period", SetInput{Period: "2026-7", Currency: "PEN", Amount: "1"}},
-		{"unsupported currency", SetInput{Period: "2026-07", Currency: "EUR", Amount: "1"}},
+		{"unregistered currency", SetInput{Period: "2026-07", Currency: "EUR", Amount: "1"}},
 		{"bad amount", SetInput{Period: "2026-07", Currency: "PEN", Amount: "1.005"}},
 	}
 	for _, tt := range tests {
@@ -105,7 +105,7 @@ func TestDelete(t *testing.T) {
 	if err := svc.Delete(ctx, "2026-07", "USD"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing balance: err = %v, want %v", err, ErrNotFound)
 	}
-	if err := svc.Delete(ctx, "2026-07", "EUR"); !errors.Is(err, ErrInvalidInput) {
+	if err := svc.Delete(ctx, "2026-07", "EU"); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("bad currency: err = %v, want %v", err, ErrInvalidInput)
 	}
 	if err := svc.Delete(ctx, "julio", "PEN"); !errors.Is(err, ErrInvalidInput) {
@@ -114,4 +114,14 @@ func TestDelete(t *testing.T) {
 	if err := svc.Delete(ctx, "2026-07", "pen"); err != nil || len(repo.byKey) != 0 {
 		t.Errorf("Delete = %v, remaining %d", err, len(repo.byKey))
 	}
+}
+
+// anyCurrency accepts every currency except EUR, which tests use as the unregistered one.
+type anyCurrency struct{}
+
+func (anyCurrency) Require(_ context.Context, c money.Currency) error {
+	if c == "EUR" {
+		return ErrInvalidInput // stands for a currency that was never registered
+	}
+	return nil
 }

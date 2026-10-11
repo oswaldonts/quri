@@ -14,6 +14,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
@@ -46,21 +47,16 @@ type PeriodParam struct {
 	Period string `path:"period" pattern:"^[0-9]{4}-(0[1-9]|1[0-2])$" example:"2026-07" doc:"Month the money was earned (YYYY-MM)."`
 }
 
-// CurrencyCode is an ISO 4217 code in request bodies. Its schema enum is built from
-// money.Currencies(), so supporting a new currency never requires touching the API.
+// CurrencyCode is a three-letter currency code in request bodies. Which codes are accepted
+// depends on the currencies the user registered (see /currencies), so the schema only sets the shape.
 type CurrencyCode string
 
 // Schema implements huma.SchemaProvider.
 func (CurrencyCode) Schema(huma.Registry) *huma.Schema {
-	codes := money.Currencies()
-	enum := make([]any, 0, len(codes))
-	for _, c := range codes {
-		enum = append(enum, string(c))
-	}
 	return &huma.Schema{
 		Type:        huma.TypeString,
-		Enum:        enum,
-		Description: "ISO 4217 currency code.",
+		Pattern:     "^[A-Za-z]{3}$",
+		Description: "Currency code registered in /currencies.",
 		Examples:    []any{string(money.USD)},
 	}
 }
@@ -90,6 +86,7 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		errors.Is(err, category.ErrInvalidInput),
 		errors.Is(err, expense.ErrInvalidInput),
 		errors.Is(err, account.ErrInvalidInput),
+		errors.Is(err, currency.ErrInvalidInput),
 		errors.Is(err, balance.ErrInvalidInput),
 		errors.Is(err, summary.ErrInvalidInput),
 		errors.Is(err, budget.ErrInvalidInput):
@@ -100,6 +97,7 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		errors.Is(err, exchange.ErrNotFound),
 		errors.Is(err, balance.ErrNotFound),
 		errors.Is(err, account.ErrNotFound),
+		errors.Is(err, currency.ErrNotFound),
 		errors.Is(err, budget.ErrNotFound):
 		return huma.Error404NotFound(err.Error())
 	case errors.Is(err, exchange.ErrRateNotFound),
@@ -107,6 +105,8 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		errors.Is(err, account.ErrNameTaken),
 		errors.Is(err, account.ErrCashExists),
 		errors.Is(err, account.ErrInUse),
+		errors.Is(err, currency.ErrExists),
+		errors.Is(err, currency.ErrInUse),
 		errors.Is(err, category.ErrSystemCategory),
 		errors.Is(err, category.ErrArchived),
 		errors.Is(err, category.ErrInUse),

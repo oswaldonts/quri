@@ -18,6 +18,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
@@ -65,23 +66,25 @@ func newTestRouterWithAuth(t *testing.T, authSvc AuthService) http.Handler {
 
 	categoryRepo := sqlite.NewCategoryRepository(db)
 	categorySvc := category.NewService(categoryRepo, categoryRepo)
-	exchangeSvc := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categorySvc)
+	currencySvc := currency.NewService(sqlite.NewCurrencyRepository(db))
+	exchangeSvc := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categorySvc, currencySvc)
 	incomeRepo := sqlite.NewIncomeRepository(db)
 	expenseRepo := sqlite.NewExpenseRepository(db)
 	balanceRepo := sqlite.NewBalanceRepository(db)
 	budgetRepo := sqlite.NewBudgetRepository(db)
-	accountSvc := account.NewService(sqlite.NewAccountRepository(db), expenseRepo)
+	accountSvc := account.NewService(sqlite.NewAccountRepository(db), expenseRepo, currencySvc)
 	return NewRouter(Services{
 		Auth:       authSvc,
 		Categories: categorySvc,
-		Incomes:    income.NewService(incomeRepo, categorySvc),
-		Balances:   balance.NewService(balanceRepo),
+		Incomes:    income.NewService(incomeRepo, categorySvc, currencySvc),
+		Balances:   balance.NewService(balanceRepo, currencySvc),
 		Summaries:  summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo, sqlite.NewPeriodBounds(db)),
-		Budgets:    budget.NewService(budgetRepo, categorySvc),
-		Expenses:   expense.NewService(expenseRepo, categorySvc, accountSvc),
+		Budgets:    budget.NewService(budgetRepo, categorySvc, currencySvc),
+		Expenses:   expense.NewService(expenseRepo, categorySvc, accountSvc, currencySvc),
 		Rates:      exchangeSvc,
 		Exchanges:  exchangeSvc,
 		Accounts:   accountSvc,
+		Currencies: currencySvc,
 	}, quiet)
 }
 

@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
@@ -49,17 +50,19 @@ type Service struct {
 	rates      RateRepository
 	exchanges  Repository
 	categories expense.CategoryResolver
+	currencies currency.Checker
 	now        func() time.Time
 	newID      func() string
 }
 
 // NewService returns a Service. categories provides the system category that
 // receives the source side of each exchange.
-func NewService(rates RateRepository, exchanges Repository, categories expense.CategoryResolver) *Service {
+func NewService(rates RateRepository, exchanges Repository, categories expense.CategoryResolver, currencies currency.Checker) *Service {
 	return &Service{
 		rates:      rates,
 		exchanges:  exchanges,
 		categories: categories,
+		currencies: currencies,
 		now:        time.Now,
 		newID:      rand.Text,
 	}
@@ -83,6 +86,9 @@ type SetRateInput struct {
 func (s *Service) SetRate(ctx context.Context, in SetRateInput) (PeriodRate, error) {
 	p, from, to, err := parsePair(in.PairInput)
 	if err != nil {
+		return PeriodRate{}, err
+	}
+	if err := s.requirePair(ctx, from, to); err != nil {
 		return PeriodRate{}, err
 	}
 	rate, err := money.ParseRate(in.Rate)
@@ -137,6 +143,9 @@ type RegisterInput struct {
 func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, error) {
 	p, from, to, err := parsePair(in.PairInput)
 	if err != nil {
+		return Exchange{}, err
+	}
+	if err := s.requirePair(ctx, from, to); err != nil {
 		return Exchange{}, err
 	}
 
@@ -331,6 +340,14 @@ func (s *Service) findRate(ctx context.Context, p period.Period, from, to money.
 		return PeriodRate{}, fmt.Errorf("find rate: %w", err)
 	}
 	return r, nil
+}
+
+// requirePair checks that both currencies of a new rate or exchange are registered.
+func (s *Service) requirePair(ctx context.Context, from, to money.Currency) error {
+	if err := s.currencies.Require(ctx, from); err != nil {
+		return err
+	}
+	return s.currencies.Require(ctx, to)
 }
 
 // parsePair validates the period and two different supported currencies.

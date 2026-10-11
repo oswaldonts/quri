@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
@@ -41,15 +42,17 @@ type CategoryResolver interface {
 type Service struct {
 	repo       Repository
 	categories CategoryResolver
+	currencies currency.Checker
 	now        func() time.Time
 	newID      func() string
 }
 
 // NewService returns a Service that stores incomes in repo.
-func NewService(repo Repository, categories CategoryResolver) *Service {
+func NewService(repo Repository, categories CategoryResolver, currencies currency.Checker) *Service {
 	return &Service{
 		repo:       repo,
 		categories: categories,
+		currencies: currencies,
 		now:        time.Now,
 		newID:      rand.Text,
 	}
@@ -172,6 +175,9 @@ func (s *Service) build(ctx context.Context, in RegisterInput) (Income, error) {
 	currency, err := money.ParseCurrency(in.Currency)
 	if err != nil {
 		return Income{}, invalid(err)
+	}
+	if err := s.currencies.Require(ctx, currency); err != nil {
+		return Income{}, err
 	}
 
 	amount, err := money.Parse(in.Amount, currency)

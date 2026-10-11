@@ -60,7 +60,7 @@ func (fakeCategories) EnsureInPeriod(_ context.Context, _ period.Period, id stri
 
 func newTestService() (*Service, *fakeRepo) {
 	repo := &fakeRepo{byKey: map[key]Budget{}}
-	s := NewService(repo, fakeCategories{})
+	s := NewService(repo, fakeCategories{}, anyCurrency{})
 	s.now = func() time.Time { return time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC) }
 	return s, repo
 }
@@ -93,7 +93,7 @@ func TestSetValidation(t *testing.T) {
 		in   SetInput
 	}{
 		{"bad period", SetInput{Period: "2026-8", CategoryID: "market", Currency: "PEN", Amount: "1"}},
-		{"unsupported currency", SetInput{Period: "2026-08", CategoryID: "market", Currency: "EUR", Amount: "1"}},
+		{"unregistered currency", SetInput{Period: "2026-08", CategoryID: "market", Currency: "EUR", Amount: "1"}},
 		{"bad amount", SetInput{Period: "2026-08", CategoryID: "market", Currency: "PEN", Amount: "1.005"}},
 		{"zero amount", SetInput{Period: "2026-08", CategoryID: "market", Currency: "PEN", Amount: "0"}},
 		{"unknown category", SetInput{Period: "2026-08", CategoryID: "nope", Currency: "PEN", Amount: "1"}},
@@ -115,7 +115,17 @@ func TestSetValidation(t *testing.T) {
 	if err := svc.Delete(context.Background(), "agosto", "market", "PEN"); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("Delete bad period: err = %v, want %v", err, ErrInvalidInput)
 	}
-	if err := svc.Delete(context.Background(), "2026-08", "market", "EUR"); !errors.Is(err, ErrInvalidInput) {
+	if err := svc.Delete(context.Background(), "2026-08", "market", "EU"); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("Delete bad currency: err = %v, want %v", err, ErrInvalidInput)
 	}
+}
+
+// anyCurrency accepts every currency except EUR, which tests use as the unregistered one.
+type anyCurrency struct{}
+
+func (anyCurrency) Require(_ context.Context, c money.Currency) error {
+	if c == "EUR" {
+		return ErrInvalidInput // stands for a currency that was never registered
+	}
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
@@ -47,12 +48,13 @@ type CategoryResolver interface {
 type Service struct {
 	repo       Repository
 	categories CategoryResolver
+	currencies currency.Checker
 	now        func() time.Time
 }
 
 // NewService returns a Service backed by repo.
-func NewService(repo Repository, categories CategoryResolver) *Service {
-	return &Service{repo: repo, categories: categories, now: time.Now}
+func NewService(repo Repository, categories CategoryResolver, currencies currency.Checker) *Service {
+	return &Service{repo: repo, categories: categories, currencies: currencies, now: time.Now}
 }
 
 // SetInput carries the budget of a category.
@@ -72,6 +74,9 @@ func (s *Service) Set(ctx context.Context, in SetInput) (Budget, error) {
 	currency, err := money.ParseCurrency(in.Currency)
 	if err != nil {
 		return Budget{}, invalid(err)
+	}
+	if err := s.currencies.Require(ctx, currency); err != nil {
+		return Budget{}, err
 	}
 	amount, err := money.Parse(in.Amount, currency)
 	if err != nil {

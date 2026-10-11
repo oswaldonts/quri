@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 )
 
@@ -91,15 +92,16 @@ type Charges interface {
 
 // Service holds the account use cases.
 type Service struct {
-	repo  Repository
-	spent Charges
-	now   func() time.Time
-	newID func() string
+	repo       Repository
+	spent      Charges
+	currencies currency.Checker
+	now        func() time.Time
+	newID      func() string
 }
 
 // NewService returns a Service backed by repo.
-func NewService(repo Repository, spent Charges) *Service {
-	return &Service{repo: repo, spent: spent, now: time.Now, newID: rand.Text}
+func NewService(repo Repository, spent Charges, currencies currency.Checker) *Service {
+	return &Service{repo: repo, spent: spent, currencies: currencies, now: time.Now, newID: rand.Text}
 }
 
 // CreateInput carries the raw values of a new account.
@@ -119,6 +121,9 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Account, error) {
 	currency, err := money.ParseCurrency(in.Currency)
 	if err != nil {
 		return Account{}, invalid(err)
+	}
+	if err := s.currencies.Require(ctx, currency); err != nil {
+		return Account{}, err
 	}
 	amount, err := money.Parse(in.Balance, currency)
 	if err != nil {

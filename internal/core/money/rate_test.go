@@ -86,7 +86,7 @@ func TestConvertInvalid(t *testing.T) {
 	amount, _ := Parse("10", USD)
 	rate, _ := ParseRate("3.25")
 
-	if _, err := amount.Convert(rate, Currency("EUR")); !errors.Is(err, ErrUnsupportedCurrency) {
+	if _, err := amount.Convert(rate, Currency("EU")); !errors.Is(err, ErrUnsupportedCurrency) {
 		t.Errorf("unsupported target: err = %v, want %v", err, ErrUnsupportedCurrency)
 	}
 	if _, err := amount.Convert(Rate{}, PEN); !errors.Is(err, ErrInvalidRate) {

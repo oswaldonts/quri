@@ -105,7 +105,7 @@ func newTestService(repo *fakeRepo) *Service {
 	s := NewService(repo, fakeCategories{inPeriod: map[string]category.Category{
 		"market":   {ID: "market", Name: "Mercado", Group: category.GroupNeeds},
 		"exchange": {ID: "exchange", Name: "Cambio", Group: category.GroupSystem},
-	}}, fakeAccounts{})
+	}}, fakeAccounts{}, anyCurrency{})
 	s.now = func() time.Time { return time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC) }
 	ids := 0
 	s.newID = func() string { ids++; return fmt.Sprintf("exp-%d", ids) }
@@ -149,7 +149,7 @@ func TestRegisterValidation(t *testing.T) {
 		modify func(*RegisterInput)
 	}{
 		{"bad period", func(in *RegisterInput) { in.Period = "2026-7" }},
-		{"unsupported currency", func(in *RegisterInput) { in.Currency = "EUR" }},
+		{"unregistered currency", func(in *RegisterInput) { in.Currency = "EUR" }},
 		{"bad amount", func(in *RegisterInput) { in.Amount = "1.005" }},
 		{"zero amount", func(in *RegisterInput) { in.Amount = "0" }},
 		{"long description", func(in *RegisterInput) { in.Description = strings.Repeat("a", 201) }},
@@ -447,4 +447,14 @@ func TestRegisterChargesAnAccount(t *testing.T) {
 			}
 		})
 	}
+}
+
+// anyCurrency accepts every currency except EUR, which tests use as the unregistered one.
+type anyCurrency struct{}
+
+func (anyCurrency) Require(_ context.Context, c money.Currency) error {
+	if c == "EUR" {
+		return ErrInvalidInput // stands for a currency that was never registered
+	}
+	return nil
 }

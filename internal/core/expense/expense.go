@@ -14,6 +14,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
@@ -85,13 +86,14 @@ type Service struct {
 	repo       Repository
 	categories CategoryResolver
 	accounts   AccountResolver
+	currencies currency.Checker
 	now        func() time.Time
 	newID      func() string
 }
 
 // NewService returns a Service backed by repo.
-func NewService(repo Repository, categories CategoryResolver, accounts AccountResolver) *Service {
-	return &Service{repo: repo, categories: categories, accounts: accounts, now: time.Now, newID: rand.Text}
+func NewService(repo Repository, categories CategoryResolver, accounts AccountResolver, currencies currency.Checker) *Service {
+	return &Service{repo: repo, categories: categories, accounts: accounts, currencies: currencies, now: time.Now, newID: rand.Text}
 }
 
 // RegisterInput carries the raw values of a new expense.
@@ -114,6 +116,9 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Expense, erro
 		return Expense{}, err
 	}
 	if err := s.checkCategory(ctx, e); err != nil {
+		return Expense{}, err
+	}
+	if err := s.currencies.Require(ctx, e.Amount.Currency()); err != nil {
 		return Expense{}, err
 	}
 	if err := s.chargeAccount(ctx, &e); err != nil {
@@ -274,6 +279,9 @@ func (s *Service) RegisterBatch(ctx context.Context, in BatchInput) ([]Expense, 
 	// Categories are checked once all items are well formed.
 	for i, e := range expenses {
 		if err := s.checkCategory(ctx, e); err != nil {
+			return nil, fmt.Errorf("item %d: %w", i+1, err)
+		}
+		if err := s.currencies.Require(ctx, e.Amount.Currency()); err != nil {
 			return nil, fmt.Errorf("item %d: %w", i+1, err)
 		}
 	}

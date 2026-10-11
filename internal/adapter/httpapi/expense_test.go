@@ -78,7 +78,7 @@ func TestRegisterExpenseErrors(t *testing.T) {
 		{"unknown category", strings.Replace(expenseBody, `"market"`, `"nope"`, 1)},
 		{"system category", strings.Replace(expenseBody, `"market"`, `"exchange"`, 1)},
 		{"zero amount", strings.Replace(expenseBody, `"45.50"`, `"0"`, 1)},
-		{"unsupported currency", strings.Replace(expenseBody, `"PEN"`, `"EUR"`, 1)},
+		{"unregistered currency", strings.Replace(expenseBody, `"PEN"`, `"GBP"`, 1)},
 		{"bad date", strings.Replace(expenseBody, `"2026-08-03"`, `"03/08/2026"`, 1)},
 	}
 	for _, tt := range tests {

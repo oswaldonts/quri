@@ -29,7 +29,7 @@ func TestBalanceErrors(t *testing.T) {
 		path string
 		body string
 	}{
-		{"unsupported currency", "/periods/2026-07/balances/EUR", `{"amount": "1"}`},
+		{"unregistered currency", "/periods/2026-07/balances/GBP", `{"amount": "1"}`},
 		{"bad amount", "/periods/2026-07/balances/PEN", `{"amount": "1.005"}`},
 		{"bad period", "/periods/2026-7/balances/PEN", `{"amount": "1"}`},
 	}

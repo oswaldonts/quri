@@ -115,7 +115,7 @@ type fixture struct {
 
 func newFixture() fixture {
 	f := fixture{exchanges: &fakeExchanges{}}
-	f.svc = NewService(&fakeRates{rates: map[string]PeriodRate{}}, f.exchanges, allCategories{})
+	f.svc = NewService(&fakeRates{rates: map[string]PeriodRate{}}, f.exchanges, allCategories{}, anyCurrency{})
 	f.svc.now = func() time.Time { return time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC) }
 	ids := 0
 	f.svc.newID = func() string { ids++; return fmt.Sprintf("id-%d", ids) }
@@ -158,7 +158,7 @@ func TestSetRateValidation(t *testing.T) {
 		in   SetRateInput
 	}{
 		{"bad period", SetRateInput{PairInput{"2026-7", "USD", "PEN"}, "3.25"}},
-		{"unsupported currency", SetRateInput{PairInput{"2026-07", "USD", "EUR"}, "3.25"}},
+		{"unregistered currency", SetRateInput{PairInput{"2026-07", "USD", "EUR"}, "3.25"}},
 		{"same currency", SetRateInput{PairInput{"2026-07", "USD", "usd"}, "3.25"}},
 		{"bad rate", SetRateInput{PairInput{"2026-07", "USD", "PEN"}, "0.123456789"}},
 		{"zero rate", SetRateInput{PairInput{"2026-07", "USD", "PEN"}, "0"}},
@@ -404,3 +404,13 @@ func TestPlannedExchangeConfirmed(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// anyCurrency accepts every currency except EUR, which tests use as the unregistered one.
+type anyCurrency struct{}
+
+func (anyCurrency) Require(_ context.Context, c money.Currency) error {
+	if c == "EUR" {
+		return ErrInvalidInput // stands for a currency that was never registered
+	}
+	return nil
+}

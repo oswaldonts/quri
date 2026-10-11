@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
@@ -83,7 +84,7 @@ func (fakeCategories) EnsureInPeriod(_ context.Context, _ period.Period, id stri
 }
 
 func newTestService(repo Repository) *Service {
-	s := NewService(repo, fakeCategories{})
+	s := NewService(repo, fakeCategories{}, anyCurrency{})
 	s.now = func() time.Time { return time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC) }
 	s.newID = func() string { return "test-id" }
 	return s
@@ -319,3 +320,8 @@ func TestListStatusFilter(t *testing.T) {
 		t.Errorf("bad filter: err = %v, want %v", err, ErrInvalidInput)
 	}
 }
+
+// anyCurrency accepts every currency.
+type anyCurrency struct{}
+
+func (anyCurrency) Require(context.Context, money.Currency) error { return nil }

@@ -2,7 +2,6 @@ package money
 
 import (
 	"errors"
-	"slices"
 	"testing"
 )
 
@@ -17,7 +16,9 @@ func TestParseCurrency(t *testing.T) {
 		{in: " usd ", want: USD},
 		{in: "$", wantErr: ErrUnsupportedCurrency},
 		{in: "ars", want: ARS},
-		{in: "EUR", wantErr: ErrUnsupportedCurrency},
+		{in: "eur", want: Currency("EUR")},
+		{in: "EURO", wantErr: ErrUnsupportedCurrency},
+		{in: "U5D", wantErr: ErrUnsupportedCurrency},
 		{in: "", wantErr: ErrUnsupportedCurrency},
 	}
 	for _, tt := range tests {
@@ -75,7 +76,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestParseUnsupportedCurrency(t *testing.T) {
-	if _, err := Parse("10", Currency("EUR")); !errors.Is(err, ErrUnsupportedCurrency) {
+	if _, err := Parse("10", Currency("EU")); !errors.Is(err, ErrUnsupportedCurrency) {
 		t.Fatalf("err = %v, want %v", err, ErrUnsupportedCurrency)
 	}
 }
@@ -95,13 +96,6 @@ func TestAdd(t *testing.T) {
 	pen, _ := Parse("1", PEN)
 	if _, err := a.Add(pen); !errors.Is(err, ErrCurrencyMismatch) {
 		t.Errorf("err = %v, want %v", err, ErrCurrencyMismatch)
-	}
-}
-
-func TestCurrencies(t *testing.T) {
-	want := []Currency{ARS, COP, PEN, USD, VES}
-	if got := Currencies(); !slices.Equal(got, want) {
-		t.Errorf("Currencies() = %v, want %v (sorted)", got, want)
 	}
 }
 

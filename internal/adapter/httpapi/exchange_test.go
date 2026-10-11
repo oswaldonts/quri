@@ -38,7 +38,7 @@ func TestRateEndpointsErrors(t *testing.T) {
 	}{
 		{"pair without dash", http.MethodPut, "/periods/2026-07/rates/USDPEN", `{"rate": "3.25"}`},
 		{"same currency", http.MethodPut, "/periods/2026-07/rates/USD-USD", `{"rate": "3.25"}`},
-		{"unsupported currency", http.MethodPut, "/periods/2026-07/rates/USD-EUR", `{"rate": "3.25"}`},
+		{"unregistered currency", http.MethodPut, "/periods/2026-07/rates/USD-GBP", `{"rate": "3.25"}`},
 		{"rate as number", http.MethodPut, ratePath, `{"rate": 3.25}`},
 		{"too many decimals", http.MethodPut, ratePath, `{"rate": "0.123456789"}`},
 		{"zero rate", http.MethodPut, ratePath, `{"rate": "0"}`},

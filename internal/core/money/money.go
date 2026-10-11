@@ -5,9 +5,7 @@ package money
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"math/big"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -19,39 +17,41 @@ var (
 	ErrInvalidRate         = errors.New("invalid rate")
 )
 
-// Currency is an ISO 4217 currency code.
+// Currency is a three-letter ISO 4217 style code. Which codes are in use is up to the user
+// (see package currency); this package only checks the shape.
 type Currency string
 
+// Codes the tests and API examples use; they are not a list of supported currencies.
 const (
-	USD Currency = "USD" // US dollar
-	PEN Currency = "PEN" // Peruvian sol
-	ARS Currency = "ARS" // Argentine peso
-	COP Currency = "COP" // Colombian peso
-	VES Currency = "VES" // Venezuelan bolívar
+	USD Currency = "USD"
+	PEN Currency = "PEN"
+	ARS Currency = "ARS"
+	COP Currency = "COP"
+	VES Currency = "VES"
 )
 
-// minorUnits maps each supported currency to its number of decimal places (ISO 4217).
-// Supporting a new currency only takes adding it here.
-var minorUnits = map[Currency]int{
-	USD: 2,
-	PEN: 2,
-	ARS: 2,
-	COP: 2,
-	VES: 2,
-}
+// decimals is the number of minor-unit places of every currency.
+const decimals = 2
 
-// Currencies returns the supported currencies in alphabetical order.
-func Currencies() []Currency {
-	return slices.Sorted(maps.Keys(minorUnits))
+func valid(c Currency) bool {
+	if len(c) != 3 {
+		return false
+	}
+	for _, r := range c {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 // maxAmountDigits keeps parsed amounts far from the int64 limit.
 const maxAmountDigits = 13
 
-// ParseCurrency validates an ISO 4217 code (case-insensitive) against the supported currencies.
+// ParseCurrency validates the shape of a currency code (three letters, case-insensitive).
 func ParseCurrency(code string) (Currency, error) {
 	c := Currency(strings.ToUpper(strings.TrimSpace(code)))
-	if _, ok := minorUnits[c]; !ok {
+	if !valid(c) {
 		return "", fmt.Errorf("%w: %q", ErrUnsupportedCurrency, code)
 	}
 	return c, nil
@@ -66,7 +66,7 @@ type Money struct {
 
 // New builds Money from an amount already expressed in minor units (e.g. 133000 for 1330.00 USD).
 func New(minor int64, c Currency) (Money, error) {
-	if _, ok := minorUnits[c]; !ok {
+	if !valid(c) {
 		return Money{}, fmt.Errorf("%w: %q", ErrUnsupportedCurrency, c)
 	}
 	return Money{amount: minor, currency: c}, nil
@@ -75,8 +75,7 @@ func New(minor int64, c Currency) (Money, error) {
 // Parse converts a decimal string such as "1330", "1330.5" or "-7.00" into Money.
 // It rejects more decimal places than the currency allows instead of rounding.
 func Parse(s string, c Currency) (Money, error) {
-	decimals, ok := minorUnits[c]
-	if !ok {
+	if !valid(c) {
 		return Money{}, fmt.Errorf("%w: %q", ErrUnsupportedCurrency, c)
 	}
 	minor, err := parseDecimal(s, maxAmountDigits, decimals)
@@ -103,7 +102,7 @@ func (m Money) Add(other Money) (Money, error) {
 	return Money{amount: m.amount + other.amount, currency: m.currency}, nil
 }
 
-// Zero returns an amount of zero in currency c (c must be supported).
+// Zero returns an amount of zero in currency c (c must be a valid code).
 func Zero(c Currency) Money {
 	return Money{currency: c}
 }
@@ -120,20 +119,18 @@ func (m Money) Sub(other Money) (Money, error) {
 // Any fraction smaller than the target minor unit is truncated toward zero,
 // e.g. 1096.37 USD × 3.2567 = 3570.548179 → 3570.54 PEN.
 func (m Money) Convert(r Rate, to Currency) (Money, error) {
-	toDecimals, ok := minorUnits[to]
-	if !ok {
+	if !valid(to) {
 		return Money{}, fmt.Errorf("%w: %q", ErrUnsupportedCurrency, to)
 	}
 	if r.scaled <= 0 {
 		return Money{}, fmt.Errorf("%w: must be greater than zero", ErrInvalidRate)
 	}
-	fromDecimals := minorUnits[m.currency]
 
 	// result = amount × rate × 10^toDecimals / 10^(RateDecimals + fromDecimals)
 	// big.Int avoids int64 overflow in the intermediate product.
 	n := new(big.Int).Mul(big.NewInt(m.amount), big.NewInt(r.scaled))
-	n.Mul(n, big.NewInt(pow10(toDecimals)))
-	n.Quo(n, big.NewInt(pow10(RateDecimals+fromDecimals))) // Quo truncates toward zero
+	n.Mul(n, big.NewInt(pow10(decimals)))
+	n.Quo(n, big.NewInt(pow10(RateDecimals+decimals))) // Quo truncates toward zero
 
 	if !n.IsInt64() {
 		return Money{}, fmt.Errorf("%w: converted amount out of range", ErrInvalidAmount)
@@ -143,7 +140,7 @@ func (m Money) Convert(r Rate, to Currency) (Money, error) {
 
 // String formats the amount with the currency's decimal places, e.g. "1330.00".
 func (m Money) String() string {
-	return formatDecimal(m.amount, minorUnits[m.currency])
+	return formatDecimal(m.amount, decimals)
 }
 
 // RateDecimals is the precision of exchange rates. 8 places keep small rates exact
