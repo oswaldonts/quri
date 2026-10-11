@@ -16,6 +16,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/localauth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
@@ -69,7 +70,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	balanceRepo := sqlite.NewBalanceRepository(db)
 	incomeService := income.NewService(incomeRepo, categoryService)
 	balanceService := balance.NewService(balanceRepo)
-	expenseService := expense.NewService(expenseRepo, categoryService)
+	accountService := account.NewService(sqlite.NewAccountRepository(db), expenseRepo)
+	expenseService := expense.NewService(expenseRepo, categoryService, accountService)
 	budgetRepo := sqlite.NewBudgetRepository(db)
 	budgetService := budget.NewService(budgetRepo, categoryService)
 	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo, sqlite.NewPeriodBounds(db))
@@ -88,6 +90,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			Budgets:    budgetService,
 			Rates:      exchangeService,
 			Exchanges:  exchangeService,
+			Accounts:   accountService,
 		}, logger),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

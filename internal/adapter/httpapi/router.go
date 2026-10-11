@@ -43,6 +43,7 @@ type Services struct {
 	Budgets    BudgetService
 	Rates      RateManager
 	Exchanges  ExchangeService
+	Accounts   AccountService
 }
 
 // NewRouter builds the HTTP handler with all routes, middlewares and docs.
@@ -73,6 +74,7 @@ func NewRouter(s Services, logger *slog.Logger) http.Handler {
 	registerBudgets(api, s.Budgets)
 	registerRates(api, s.Rates)
 	registerExchanges(api, s.Exchanges)
+	registerAccounts(api, s.Accounts)
 
 	return r
 }
@@ -100,6 +102,7 @@ func newConfig() huma.Config {
 		{Name: tagBudgets, Description: "Planned amount per category, compared with what was spent."},
 		{Name: tagRates, Description: "Exchange rate chosen for each period and currency pair."},
 		{Name: tagExchanges, Description: "Currency conversions made with the period rate."},
+		{Name: tagAccounts, Description: "Where the money is: the cash on hand and the bank accounts. Balances are typed by hand and go down with the expenses charged to each account."},
 	}
 	return config
 }
@@ -115,4 +118,5 @@ const (
 	tagBudgets    = "Budgets"
 	tagRates      = "Rates"
 	tagExchanges  = "Exchanges"
+	tagAccounts   = "Accounts"
 )

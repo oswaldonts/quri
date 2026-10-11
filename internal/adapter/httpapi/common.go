@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
@@ -88,6 +89,7 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		errors.Is(err, exchange.ErrInvalidInput),
 		errors.Is(err, category.ErrInvalidInput),
 		errors.Is(err, expense.ErrInvalidInput),
+		errors.Is(err, account.ErrInvalidInput),
 		errors.Is(err, balance.ErrInvalidInput),
 		errors.Is(err, summary.ErrInvalidInput),
 		errors.Is(err, budget.ErrInvalidInput):
@@ -97,10 +99,14 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		errors.Is(err, expense.ErrNotFound),
 		errors.Is(err, exchange.ErrNotFound),
 		errors.Is(err, balance.ErrNotFound),
+		errors.Is(err, account.ErrNotFound),
 		errors.Is(err, budget.ErrNotFound):
 		return huma.Error404NotFound(err.Error())
 	case errors.Is(err, exchange.ErrRateNotFound),
 		errors.Is(err, category.ErrNameTaken),
+		errors.Is(err, account.ErrNameTaken),
+		errors.Is(err, account.ErrCashExists),
+		errors.Is(err, account.ErrInUse),
 		errors.Is(err, category.ErrSystemCategory),
 		errors.Is(err, category.ErrArchived),
 		errors.Is(err, category.ErrInUse),

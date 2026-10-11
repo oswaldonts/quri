@@ -8,6 +8,15 @@ import (
 	"database/sql"
 )
 
+type Account struct {
+	ID          string
+	Name        string
+	Kind        string
+	Currency    string
+	AmountMinor int64
+	UpdatedAt   string
+}
+
 type Balance struct {
 	Period      string
 	Currency    string
@@ -59,6 +68,8 @@ type Expense struct {
 	ExchangeID  sql.NullString
 	CreatedAt   string
 	Status      string
+	Cash        int64
+	AccountID   sql.NullString
 }
 
 type ExpenseTag struct {

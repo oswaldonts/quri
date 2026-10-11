@@ -30,6 +30,7 @@ type UpdateExpenseInput struct {
 		Tags        *[]string     `json:"tags,omitempty" maxItems:"10" doc:"Replaces all the tags; an empty list removes them."`
 		SpentOn     *string       `json:"spent_on,omitempty" format:"date"`
 		Status      *string       `json:"status,omitempty" enum:"planned,confirmed" doc:"Set confirmed when a planned entry happens; amount and date can be corrected in the same request."`
+		AccountID   *string       `json:"account_id,omitempty" doc:"Account the money comes out of (see /accounts), in the same currency as the expense. Its balance goes down by the amount once confirmed. Empty removes it."`
 	}
 }
 
@@ -76,6 +77,7 @@ type RegisterExpenseInput struct {
 		Tags        []string     `json:"tags,omitempty" maxItems:"10" example:"[\"dulces\"]" doc:"Kinds of expense, e.g. dulces or lácteos. Normalized to lowercase; a leading # is dropped."`
 		Status      string       `json:"status,omitempty" enum:"planned,confirmed" doc:"planned: expected, not happened yet (only counts in view=projected). confirmed (default): happened."`
 		SpentOn     string       `json:"spent_on" format:"date" example:"2026-08-03"`
+		AccountID   string       `json:"account_id,omitempty" doc:"Account the money comes out of (see /accounts), in the same currency as the expense. Its balance goes down by the amount once confirmed."`
 	}
 }
 
@@ -90,6 +92,8 @@ type Expense struct {
 	Tags        []string  `json:"tags"`
 	Status      string    `json:"status" enum:"planned,confirmed"`
 	SpentOn     string    `json:"spent_on" format:"date" example:"2026-08-03"`
+	AccountID   string    `json:"account_id,omitempty" doc:"Account the money came out of (see /accounts); its balance goes down by the amount."`
+	Cash        bool      `json:"cash" doc:"True when the account is the cash: the expense is left out of the period summary, whose available money is what is in the banks."`
 	ExchangeID  string    `json:"exchange_id,omitempty" doc:"Set when the expense is the source side of an exchange."`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -105,6 +109,8 @@ func toExpense(e expense.Expense) Expense {
 		Tags:        append([]string{}, e.Tags...), // never null in JSON
 		Status:      string(e.Status),
 		SpentOn:     e.SpentOn.Format(time.DateOnly),
+		AccountID:   e.AccountID,
+		Cash:        e.Cash,
 		ExchangeID:  e.ExchangeID,
 		CreatedAt:   e.CreatedAt,
 	}
@@ -141,6 +147,7 @@ func registerExpenses(api huma.API, expenses ExpenseService) {
 			Tags:        in.Body.Tags,
 			SpentOn:     in.Body.SpentOn,
 			Status:      in.Body.Status,
+			AccountID:   in.Body.AccountID,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "register expense", err)
@@ -233,6 +240,7 @@ func registerExpenseEdits(api huma.API, expenses ExpenseService) {
 			Tags:        in.Body.Tags,
 			SpentOn:     in.Body.SpentOn,
 			Status:      in.Body.Status,
+			AccountID:   in.Body.AccountID,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "update expense", err)

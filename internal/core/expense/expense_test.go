@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/status"
 )
@@ -79,11 +81,31 @@ func (f fakeCategories) EnsureInPeriod(_ context.Context, _ period.Period, id st
 	return c, nil
 }
 
+// fakeAccounts knows a bank account and the cash, both in PEN.
+type fakeAccounts struct{}
+
+func (fakeAccounts) Get(_ context.Context, id string) (account.Account, error) {
+	pen := func(kind account.Kind) account.Account {
+		return account.Account{ID: id, Name: id, Kind: kind, Amount: money.Zero(money.PEN)}
+	}
+	switch id {
+	case "bcp":
+		return pen(account.Bank), nil
+	case "cash":
+		return pen(account.Cash), nil
+	case "usd":
+		a := pen(account.Bank)
+		a.Amount = money.Zero(money.USD)
+		return a, nil
+	}
+	return account.Account{}, fmt.Errorf("%w: %q", account.ErrNotFound, id)
+}
+
 func newTestService(repo *fakeRepo) *Service {
 	s := NewService(repo, fakeCategories{inPeriod: map[string]category.Category{
 		"market":   {ID: "market", Name: "Mercado", Group: category.GroupNeeds},
 		"exchange": {ID: "exchange", Name: "Cambio", Group: category.GroupSystem},
-	}})
+	}}, fakeAccounts{})
 	s.now = func() time.Time { return time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC) }
 	ids := 0
 	s.newID = func() string { ids++; return fmt.Sprintf("exp-%d", ids) }
@@ -394,5 +416,35 @@ func TestStatusAndFilter(t *testing.T) {
 	got, err := svc.Update(ctx, "2026-07", planned.ID, UpdateInput{Status: ptr("confirmed"), Amount: ptr("46.00")})
 	if err != nil || got.Status != status.Confirmed || got.Amount.String() != "46.00" {
 		t.Errorf("confirm = %+v, %v", got, err)
+	}
+}
+
+func TestRegisterChargesAnAccount(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  string
+		wantCash bool
+		wantErr  error
+	}{
+		{"no account", "", false, nil},
+		{"bank", "bcp", false, nil},
+		{"cash", "cash", true, nil},
+		{"unknown", "nope", false, ErrInvalidInput},
+		{"other currency", "usd", false, ErrInvalidInput},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := validInput()
+			in.AccountID = tt.account
+
+			e, err := newTestService(&fakeRepo{}).Register(context.Background(), in)
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if err == nil && (e.Cash != tt.wantCash || e.AccountID != tt.account) {
+				t.Errorf("expense = %+v, want account %q cash=%v", e, tt.account, tt.wantCash)
+			}
+		})
 	}
 }

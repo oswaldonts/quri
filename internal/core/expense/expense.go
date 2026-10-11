@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
@@ -45,7 +46,12 @@ type Expense struct {
 	SpentOn     time.Time
 	ExchangeID  string        // set when the expense is the source side of a currency exchange
 	Status      status.Status // planned or confirmed
-	CreatedAt   time.Time
+	// AccountID is the account the money came out of ("" when not tracked).
+	AccountID string
+	// Cash is true when that account is the cash: such expenses stay out of the period's
+	// summary, whose available money is what is in the banks.
+	Cash      bool
+	CreatedAt time.Time
 }
 
 // Repository is the port the service needs to persist expenses.
@@ -68,17 +74,24 @@ type CategoryResolver interface {
 	EnsureInPeriod(ctx context.Context, p period.Period, id string) (category.Category, error)
 }
 
+// AccountResolver finds the account an expense is charged to.
+type AccountResolver interface {
+	// Get returns account.ErrNotFound if no account has the ID.
+	Get(ctx context.Context, id string) (account.Account, error)
+}
+
 // Service holds the expense use cases.
 type Service struct {
 	repo       Repository
 	categories CategoryResolver
+	accounts   AccountResolver
 	now        func() time.Time
 	newID      func() string
 }
 
 // NewService returns a Service backed by repo.
-func NewService(repo Repository, categories CategoryResolver) *Service {
-	return &Service{repo: repo, categories: categories, now: time.Now, newID: rand.Text}
+func NewService(repo Repository, categories CategoryResolver, accounts AccountResolver) *Service {
+	return &Service{repo: repo, categories: categories, accounts: accounts, now: time.Now, newID: rand.Text}
 }
 
 // RegisterInput carries the raw values of a new expense.
@@ -91,6 +104,7 @@ type RegisterInput struct {
 	Tags        []string // optional kinds of expense, e.g. "dulces"; normalized by NormalizeTags
 	SpentOn     string   // YYYY-MM-DD
 	Status      string   // "planned" or "confirmed" (default)
+	AccountID   string   // optional account the money comes out of; same currency
 }
 
 // Register validates the input and stores a new expense.
@@ -100,6 +114,9 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Expense, erro
 		return Expense{}, err
 	}
 	if err := s.checkCategory(ctx, e); err != nil {
+		return Expense{}, err
+	}
+	if err := s.chargeAccount(ctx, &e); err != nil {
 		return Expense{}, err
 	}
 	if err := s.repo.Save(ctx, e); err != nil {
@@ -118,6 +135,7 @@ type UpdateInput struct {
 	Tags        *[]string
 	SpentOn     *string
 	Status      *string
+	AccountID   *string // "" removes the account
 }
 
 // Update changes an expense of the period, validating the result like Register.
@@ -136,6 +154,7 @@ func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInp
 		Tags:        current.Tags,
 		SpentOn:     current.SpentOn.Format(time.DateOnly),
 		Status:      string(current.Status),
+		AccountID:   current.AccountID,
 	}
 	apply(&merged.CategoryID, in.CategoryID)
 	apply(&merged.Currency, in.Currency)
@@ -144,12 +163,16 @@ func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInp
 	apply(&merged.SpentOn, in.SpentOn)
 	apply(&merged.Tags, in.Tags)
 	apply(&merged.Status, in.Status)
+	apply(&merged.AccountID, in.AccountID)
 
 	updated, err := s.parse(merged)
 	if err != nil {
 		return Expense{}, err
 	}
 	if err := s.checkCategory(ctx, updated); err != nil {
+		return Expense{}, err
+	}
+	if err := s.chargeAccount(ctx, &updated); err != nil {
 		return Expense{}, err
 	}
 	updated.ID, updated.CreatedAt = current.ID, current.CreatedAt
@@ -303,6 +326,7 @@ func (s *Service) parse(in RegisterInput) (Expense, error) {
 		Description: description,
 		Tags:        tags,
 		SpentOn:     spentOn,
+		AccountID:   strings.TrimSpace(in.AccountID),
 		CreatedAt:   s.now().UTC(),
 	}, nil
 }
@@ -320,6 +344,27 @@ func (s *Service) checkCategory(ctx context.Context, e Expense) error {
 	if c.IsSystem() {
 		return invalid(fmt.Errorf("expenses in %s are created by exchanges", c.Name))
 	}
+	return nil
+}
+
+// chargeAccount checks the expense's account (it must exist and use the expense's currency)
+// and derives Cash from its kind.
+func (s *Service) chargeAccount(ctx context.Context, e *Expense) error {
+	e.Cash = false
+	if e.AccountID == "" {
+		return nil
+	}
+	a, err := s.accounts.Get(ctx, e.AccountID)
+	if errors.Is(err, account.ErrNotFound) {
+		return invalid(err)
+	}
+	if err != nil {
+		return fmt.Errorf("check account: %w", err)
+	}
+	if a.Amount.Currency() != e.Amount.Currency() {
+		return invalid(fmt.Errorf("account %s is in %s, the expense in %s", a.Name, a.Amount.Currency(), e.Amount.Currency()))
+	}
+	e.Cash = a.Kind == account.Cash
 	return nil
 }
 

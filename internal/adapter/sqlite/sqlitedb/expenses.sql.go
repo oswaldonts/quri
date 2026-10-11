@@ -62,7 +62,7 @@ func (q *Queries) DeleteExpenseTags(ctx context.Context, expenseID string) error
 }
 
 const getExpense = `-- name: GetExpense :one
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, cash, account_id
 FROM expenses
 WHERE id = ?
 `
@@ -81,13 +81,15 @@ func (q *Queries) GetExpense(ctx context.Context, id string) (Expense, error) {
 		&i.ExchangeID,
 		&i.CreatedAt,
 		&i.Status,
+		&i.Cash,
+		&i.AccountID,
 	)
 	return i, err
 }
 
 const insertExpense = `-- name: InsertExpense :exec
-INSERT INTO expenses (id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO expenses (id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, cash, account_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertExpenseParams struct {
@@ -101,6 +103,8 @@ type InsertExpenseParams struct {
 	ExchangeID  sql.NullString
 	CreatedAt   string
 	Status      string
+	Cash        int64
+	AccountID   sql.NullString
 }
 
 func (q *Queries) InsertExpense(ctx context.Context, arg InsertExpenseParams) error {
@@ -115,6 +119,8 @@ func (q *Queries) InsertExpense(ctx context.Context, arg InsertExpenseParams) er
 		arg.ExchangeID,
 		arg.CreatedAt,
 		arg.Status,
+		arg.Cash,
+		arg.AccountID,
 	)
 	return err
 }
@@ -192,7 +198,7 @@ func (q *Queries) ListExpenseTagsByPeriod(ctx context.Context, period string) ([
 }
 
 const listExpensesByPeriod = `-- name: ListExpensesByPeriod :many
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, cash, account_id
 FROM expenses
 WHERE period = ?
 ORDER BY spent_on, created_at
@@ -218,6 +224,8 @@ func (q *Queries) ListExpensesByPeriod(ctx context.Context, period string) ([]Ex
 			&i.ExchangeID,
 			&i.CreatedAt,
 			&i.Status,
+			&i.Cash,
+			&i.AccountID,
 		); err != nil {
 			return nil, err
 		}
@@ -260,7 +268,7 @@ func (q *Queries) UpdateExchangeExpense(ctx context.Context, arg UpdateExchangeE
 
 const updateExpense = `-- name: UpdateExpense :execrows
 UPDATE expenses
-SET category_id = ?, currency = ?, amount_minor = ?, description = ?, spent_on = ?, status = ?
+SET category_id = ?, currency = ?, amount_minor = ?, description = ?, spent_on = ?, status = ?, cash = ?, account_id = ?
 WHERE id = ?
 `
 
@@ -271,6 +279,8 @@ type UpdateExpenseParams struct {
 	Description string
 	SpentOn     string
 	Status      string
+	Cash        int64
+	AccountID   sql.NullString
 	ID          string
 }
 
@@ -282,6 +292,8 @@ func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (i
 		arg.Description,
 		arg.SpentOn,
 		arg.Status,
+		arg.Cash,
+		arg.AccountID,
 		arg.ID,
 	)
 	if err != nil {

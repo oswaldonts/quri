@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
@@ -69,6 +70,7 @@ func newTestRouterWithAuth(t *testing.T, authSvc AuthService) http.Handler {
 	expenseRepo := sqlite.NewExpenseRepository(db)
 	balanceRepo := sqlite.NewBalanceRepository(db)
 	budgetRepo := sqlite.NewBudgetRepository(db)
+	accountSvc := account.NewService(sqlite.NewAccountRepository(db), expenseRepo)
 	return NewRouter(Services{
 		Auth:       authSvc,
 		Categories: categorySvc,
@@ -76,9 +78,10 @@ func newTestRouterWithAuth(t *testing.T, authSvc AuthService) http.Handler {
 		Balances:   balance.NewService(balanceRepo),
 		Summaries:  summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo, sqlite.NewPeriodBounds(db)),
 		Budgets:    budget.NewService(budgetRepo, categorySvc),
-		Expenses:   expense.NewService(expenseRepo, categorySvc),
+		Expenses:   expense.NewService(expenseRepo, categorySvc, accountSvc),
 		Rates:      exchangeSvc,
 		Exchanges:  exchangeSvc,
+		Accounts:   accountSvc,
 	}, quiet)
 }
 
