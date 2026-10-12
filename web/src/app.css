@@ -378,71 +378,9 @@ button.link.neutral {
   margin-left: 0.5rem;
 }
 
-/* Collapsible category groups */
-/* Flat rows divided by lines, like the tables: no box inside the panel's own box */
-details.group {
-  border-top: 1px solid var(--border);
-}
-
-details.group:last-of-type {
-  border-bottom: 1px solid var(--border);
-}
-
-details > summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.6rem 0.25rem;
-  cursor: pointer;
-  list-style: none;
-}
-
-details > summary:hover {
-  background: color-mix(in srgb, var(--border) 35%, transparent);
-}
-
-details > summary::-webkit-details-marker {
-  display: none;
-}
-
-/* Chevron drawn with borders: no dependency on the font having a triangle glyph */
-details > summary::before {
-  content: '';
-  flex: none;
-  width: 0.45rem;
-  height: 0.45rem;
-  margin-right: 0.6rem;
-  border-right: 2px solid var(--muted);
-  border-bottom: 2px solid var(--muted);
-  transform: rotate(-45deg);
-}
-
-details[open] > summary::before {
-  transform: rotate(45deg);
-}
-
-details > summary > :first-child {
-  flex: 1;
-}
-
-.group-title {
-  font-weight: 600;
-}
-
-.group-total {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  text-align: right;
-}
-
-.group-total .muted {
-  font-weight: 400;
-  font-size: 0.8rem;
-}
-
-details.group table {
-  margin: 0 0 0.75rem;
+/* Expenses of one category: always open, no box inside the panel's own box */
+.category h3 {
+  margin: 0.5rem 0 0.25rem;
 }
 
 /* Inline edit of an account balance */
@@ -506,10 +444,11 @@ tfoot td {
   }
 }
 
-tr.sum-row td {
-  font-weight: 600;
+/* Disabled entries: still listed, but they don't count */
+tr.off td:not(:last-child) {
+  opacity: 0.55;
 }
 
-tr.sum-row .muted {
-  font-weight: 400;
+tr.off .amount {
+  text-decoration: line-through;
 }

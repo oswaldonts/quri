@@ -25,7 +25,7 @@ DELETE FROM accounts WHERE id = ?;
 -- name: ListConfirmedExpensesByAccount :many
 SELECT amount_minor, created_at
 FROM expenses
-WHERE account_id = ? AND status = 'confirmed';
+WHERE account_id = ? AND status = 'confirmed' AND disabled = 0;
 
 -- name: AccountHasExpenses :one
 SELECT EXISTS (SELECT 1 FROM expenses WHERE account_id = ?);

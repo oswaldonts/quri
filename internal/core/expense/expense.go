@@ -49,6 +49,8 @@ type Expense struct {
 	Status      status.Status // planned or confirmed
 	// AccountID is the account the money came out of ("" when not tracked).
 	AccountID string
+	// Disabled keeps the expense registered but out of every sum: summary and account balance.
+	Disabled  bool
 	CreatedAt time.Time
 }
 
@@ -138,6 +140,7 @@ type UpdateInput struct {
 	SpentOn     *string
 	Status      *string
 	AccountID   *string // "" removes the account
+	Disabled    *bool
 }
 
 // Update changes an expense of the period, validating the result like Register.
@@ -178,6 +181,8 @@ func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInp
 		return Expense{}, err
 	}
 	updated.ID, updated.CreatedAt = current.ID, current.CreatedAt
+	updated.Disabled = current.Disabled
+	apply(&updated.Disabled, in.Disabled)
 	if err := s.repo.Update(ctx, updated); err != nil {
 		return Expense{}, fmt.Errorf("update expense: %w", err)
 	}

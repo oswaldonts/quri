@@ -119,7 +119,7 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 const listConfirmedExpensesByAccount = `-- name: ListConfirmedExpensesByAccount :many
 SELECT amount_minor, created_at
 FROM expenses
-WHERE account_id = ? AND status = 'confirmed'
+WHERE account_id = ? AND status = 'confirmed' AND disabled = 0
 `
 
 type ListConfirmedExpensesByAccountRow struct {

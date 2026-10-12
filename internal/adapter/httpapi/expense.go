@@ -31,6 +31,7 @@ type UpdateExpenseInput struct {
 		SpentOn     *string       `json:"spent_on,omitempty" format:"date"`
 		Status      *string       `json:"status,omitempty" enum:"planned,confirmed" doc:"Set confirmed when a planned entry happens; amount and date can be corrected in the same request."`
 		AccountID   *string       `json:"account_id,omitempty" doc:"Account the money comes out of (see /accounts), in the same currency as the expense. Its balance goes down by the amount once confirmed. Empty removes it."`
+		Disabled    *bool         `json:"disabled,omitempty" doc:"true leaves the expense out of the summary and the account balance without deleting it; false counts it again."`
 	}
 }
 
@@ -93,6 +94,7 @@ type Expense struct {
 	Status      string    `json:"status" enum:"planned,confirmed"`
 	SpentOn     string    `json:"spent_on" format:"date" example:"2026-08-03"`
 	AccountID   string    `json:"account_id,omitempty" doc:"Account the money came out of (see /accounts); its balance goes down by the amount."`
+	Disabled    bool      `json:"disabled" doc:"A disabled expense doesn't count in the summary nor in the account balance."`
 	ExchangeID  string    `json:"exchange_id,omitempty" doc:"Set when the expense is the source side of an exchange."`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -109,6 +111,7 @@ func toExpense(e expense.Expense) Expense {
 		Status:      string(e.Status),
 		SpentOn:     e.SpentOn.Format(time.DateOnly),
 		AccountID:   e.AccountID,
+		Disabled:    e.Disabled,
 		ExchangeID:  e.ExchangeID,
 		CreatedAt:   e.CreatedAt,
 	}
@@ -239,6 +242,7 @@ func registerExpenseEdits(api huma.API, expenses ExpenseService) {
 			SpentOn:     in.Body.SpentOn,
 			Status:      in.Body.Status,
 			AccountID:   in.Body.AccountID,
+			Disabled:    in.Body.Disabled,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "update expense", err)

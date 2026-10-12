@@ -42,8 +42,7 @@ type Kind string
 const (
 	// Bank is an account at a bank.
 	Bank Kind = "bank"
-	// Cash is the money on hand. Expenses charged to it stay out of the period summary,
-	// whose available money is what is in the banks.
+	// Cash is the money on hand. It is an account like any other: its expenses count in the summary.
 	Cash Kind = "cash"
 )
 

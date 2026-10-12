@@ -163,3 +163,43 @@ func TestExpenseAccountErrors(t *testing.T) {
 		t.Errorf("delete account in use: status = %d, want 409", rec.Code)
 	}
 }
+
+func TestDisabledExpenseStopsCounting(t *testing.T) {
+	h := newTestRouter(t)
+	send(h, http.MethodPost, "/periods/2026-07/incomes", `{"kind":"salary","currency":"PEN","amount":"1000","received_on":"2026-07-25"}`)
+	var bcp Account
+	decode(t, send(h, http.MethodPost, "/accounts", `{"kind":"bank","name":"BCP","currency":"PEN","balance":"500"}`), &bcp)
+	var e Expense
+	decode(t, send(h, http.MethodPost, "/periods/2026-07/expenses",
+		`{"category_id":"market","currency":"PEN","amount":"100","spent_on":"2026-08-04","account_id":"`+bcp.ID+`"}`), &e)
+	if e.Disabled {
+		t.Fatalf("new expense = %+v, want enabled", e)
+	}
+
+	check := func(label, spent, balance string) {
+		t.Helper()
+		var s Summary
+		decode(t, send(h, http.MethodGet, "/periods/2026-07/summary", ""), &s)
+		if got := s.Currencies[0].Spent; got != spent {
+			t.Errorf("%s: spent = %s, want %s", label, got, spent)
+		}
+		if got := listAccounts(t, h)[0].Balance; got != balance {
+			t.Errorf("%s: BCP = %s, want %s", label, got, balance)
+		}
+	}
+	check("enabled", "100.00", "400.00")
+
+	decode(t, send(h, http.MethodPatch, "/periods/2026-07/expenses/"+e.ID, `{"disabled":true}`), &e)
+	if !e.Disabled {
+		t.Errorf("after disabling = %+v", e)
+	}
+	check("disabled", "0.00", "500.00")
+
+	decode(t, send(h, http.MethodPatch, "/periods/2026-07/expenses/"+e.ID, `{"amount":"80"}`), &e)
+	if !e.Disabled {
+		t.Errorf("editing the amount re-enabled the expense: %+v", e)
+	}
+
+	decode(t, send(h, http.MethodPatch, "/periods/2026-07/expenses/"+e.ID, `{"disabled":false}`), &e)
+	check("enabled again", "80.00", "420.00")
+}

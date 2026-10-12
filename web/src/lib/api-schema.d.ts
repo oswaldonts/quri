@@ -930,6 +930,8 @@ export interface components {
             /** @example PEN */
             currency: string;
             description: string;
+            /** @description A disabled expense doesn't count in the summary nor in the account balance. */
+            disabled: boolean;
             /** @description Set when the expense is the source side of an exchange. */
             exchange_id?: string;
             id: string;
@@ -1364,6 +1366,8 @@ export interface components {
              */
             currency?: string;
             description?: string;
+            /** @description true leaves the expense out of the summary and the account balance without deleting it; false counts it again. */
+            disabled?: boolean;
             /** Format: date */
             spent_on?: string;
             /**

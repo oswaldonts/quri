@@ -135,6 +135,7 @@ func toExpense(row sqlitedb.Expense) (expense.Expense, error) {
 		ExchangeID:  row.ExchangeID.String, // "" when NULL
 		Status:      status.Status(row.Status),
 		AccountID:   row.AccountID.String, // "" when NULL
+		Disabled:    row.Disabled != 0,
 		CreatedAt:   createdAt,
 	}, nil
 }
@@ -175,6 +176,7 @@ func (r *ExpenseRepository) Update(ctx context.Context, e expense.Expense) error
 		SpentOn:     e.SpentOn.Format(time.DateOnly),
 		Status:      storedStatus(e.Status),
 		AccountID:   sql.NullString{String: e.AccountID, Valid: e.AccountID != ""},
+		Disabled:    boolToInt(e.Disabled),
 		ID:          e.ID,
 	})
 	if err := notFoundIfNone(n, err, expense.ErrNotFound, e.ID); err != nil {

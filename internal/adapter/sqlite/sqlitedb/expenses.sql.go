@@ -62,7 +62,7 @@ func (q *Queries) DeleteExpenseTags(ctx context.Context, expenseID string) error
 }
 
 const getExpense = `-- name: GetExpense :one
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled
 FROM expenses
 WHERE id = ?
 `
@@ -82,6 +82,7 @@ func (q *Queries) GetExpense(ctx context.Context, id string) (Expense, error) {
 		&i.CreatedAt,
 		&i.Status,
 		&i.AccountID,
+		&i.Disabled,
 	)
 	return i, err
 }
@@ -195,7 +196,7 @@ func (q *Queries) ListExpenseTagsByPeriod(ctx context.Context, period string) ([
 }
 
 const listExpensesByPeriod = `-- name: ListExpensesByPeriod :many
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled
 FROM expenses
 WHERE period = ?
 ORDER BY spent_on, created_at
@@ -222,6 +223,7 @@ func (q *Queries) ListExpensesByPeriod(ctx context.Context, period string) ([]Ex
 			&i.CreatedAt,
 			&i.Status,
 			&i.AccountID,
+			&i.Disabled,
 		); err != nil {
 			return nil, err
 		}
@@ -264,7 +266,7 @@ func (q *Queries) UpdateExchangeExpense(ctx context.Context, arg UpdateExchangeE
 
 const updateExpense = `-- name: UpdateExpense :execrows
 UPDATE expenses
-SET category_id = ?, currency = ?, amount_minor = ?, description = ?, spent_on = ?, status = ?, account_id = ?
+SET category_id = ?, currency = ?, amount_minor = ?, description = ?, spent_on = ?, status = ?, account_id = ?, disabled = ?
 WHERE id = ?
 `
 
@@ -276,6 +278,7 @@ type UpdateExpenseParams struct {
 	SpentOn     string
 	Status      string
 	AccountID   sql.NullString
+	Disabled    int64
 	ID          string
 }
 
@@ -288,6 +291,7 @@ func (q *Queries) UpdateExpense(ctx context.Context, arg UpdateExpenseParams) (i
 		arg.SpentOn,
 		arg.Status,
 		arg.AccountID,
+		arg.Disabled,
 		arg.ID,
 	)
 	if err != nil {

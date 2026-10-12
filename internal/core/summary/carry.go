@@ -3,6 +3,7 @@ package summary
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
@@ -74,6 +75,7 @@ func (s *Service) movements(ctx context.Context, p period.Period, view View) ([]
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("list balances: %w", err)
 	}
+	expenses = slices.DeleteFunc(slices.Clone(expenses), func(e expense.Expense) bool { return e.Disabled })
 	incomes, expenses = view.filter(incomes, expenses)
 	return incomes, expenses, balances, nil
 }

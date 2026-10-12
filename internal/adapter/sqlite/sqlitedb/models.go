@@ -75,6 +75,7 @@ type Expense struct {
 	CreatedAt   string
 	Status      string
 	AccountID   sql.NullString
+	Disabled    int64
 }
 
 type ExpenseTag struct {

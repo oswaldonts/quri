@@ -177,6 +177,20 @@
     }
   }
 
+  // A disabled expense stays registered but stops counting (summary and account balance).
+  async function toggleDisabled(expense: Schemas['Expense']) {
+    try {
+      const { error, response } = await api.PATCH('/periods/{period}/expenses/{id}', {
+        params: { path: { period, id: expense.id } },
+        body: { disabled: !expense.disabled },
+      })
+      if (error) loadError = failureMessage(response, error)
+      else onchange()
+    } catch {
+      loadError = connectionError
+    }
+  }
+
   async function remove(expense: Schemas['Expense']) {
     if (!confirm(`¿Eliminar el gasto de ${formatMoney(expense.amount, expense.currency)}?`)) return
     try {
@@ -193,91 +207,44 @@
   const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? id
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? ''
 
-  type CategoryGroup = { id: string; name: string; total: string; planned: string; items: Schemas['Expense'][] }
+  type CategoryGroup = { id: string; name: string; items: Schemas['Expense'][] }
 
-  // Totals count what happened; planned entries are shown apart so they don't inflate them.
-  const happened = (items: Schemas['Expense'][]) => sumAmounts(items.filter((e) => e.status !== 'planned').map((e) => e.amount))
-  const upcoming = (items: Schemas['Expense'][]) => sumAmounts(items.filter((e) => e.status === 'planned').map((e) => e.amount))
-
-  // By category, biggest first.
+  // By category, the one with the most spent first (the sums are in the summary above; disabled
+  // entries don't count for the order).
   const groups = $derived.by<CategoryGroup[]>(() => {
     const byCategory = new Map<string, Schemas['Expense'][]>()
     for (const e of expenses) byCategory.set(e.category_id, [...(byCategory.get(e.category_id) ?? []), e])
+    const counted = (items: Schemas['Expense'][]) => sumAmounts(items.filter((e) => !e.disabled).map((e) => e.amount))
     return [...byCategory]
-      .map(([id, items]) => ({ id, name: categoryName(id), total: happened(items), planned: upcoming(items), items }))
-      .sort((a, b) => compareAmounts(b.total, a.total) || a.name.localeCompare(b.name))
+      .map(([id, items]) => ({ id, name: categoryName(id), items }))
+      .sort((a, b) => compareAmounts(counted(b.items), counted(a.items)) || a.name.localeCompare(b.name))
   })
-
-  type Line = { key: string; label: string; total: string; planned: string; items: Schemas['Expense'][] }
-
-  // Entries with the same description (ignoring case and spacing) are one line with their sum; the
-  // dates and amounts of each one are in its detail. Entries without a description stay apart.
-  function lines(items: Schemas['Expense'][]): Line[] {
-    const byText = new Map<string, Schemas['Expense'][]>()
-    for (const e of items) {
-      const text = e.description.trim().toLocaleLowerCase()
-      const key = text || `#${e.id}`
-      byText.set(key, [...(byText.get(key) ?? []), e])
-    }
-    return [...byText].map(([key, group]) => ({
-      key,
-      label: group[0].description.trim(),
-      total: happened(group),
-      planned: upcoming(group),
-      items: group,
-    }))
-  }
-
-  let expanded = $state<Record<string, boolean>>({})
-  const toggle = (id: string) => (expanded[id] = !expanded[id])
 </script>
 
-{#snippet lineRows(items: Schemas['Expense'][], groupId: string, fallback: string)}
-  {#each lines(items) as l (l.key)}
-    {#if l.items.length === 1}
-      {@render row(l.items[0], fallback)}
-    {:else}
-      {@const id = `${groupId}|${l.key}`}
-      <tr class="sum-row">
-        <td colspan="2">
-          <button class="link neutral" aria-expanded={!!expanded[id]} onclick={() => toggle(id)}>
-            {expanded[id] ? '▾' : '▸'} {l.label}
-          </button>
-          <span class="badge">×{l.items.length}</span>
-        </td>
-        <td class="num">
-          {formatMoney(l.total, currency)}
-          {#if compareAmounts(l.planned, '0') > 0}
-            <span class="muted">+ {formatMoney(l.planned, currency)} planeado</span>
-          {/if}
-        </td>
-        <td></td>
-      </tr>
-      {#if expanded[id]}
-        {#each l.items as e (e.id)}
-          {@render row(e, fallback)}
-        {/each}
-      {/if}
-    {/if}
-  {/each}
-{/snippet}
-
 {#snippet row(e: Schemas['Expense'], fallback: string)}
-  <tr>
+  <tr class:off={e.disabled}>
     <td>{e.spent_on}</td>
     <td>
       {e.description || fallback}
       {#each e.tags as tag (tag)}<span class="badge">#{tag}</span>{/each}
       {#if e.account_id}<span class="badge">{accountName(e.account_id)}</span>{/if}
       {#if e.status === 'planned'}<span class="badge">Planeado</span>{/if}
+      {#if e.disabled}<span class="badge">Desactivado</span>{/if}
     </td>
-    <td class="num">{formatMoney(e.amount, e.currency)}</td>
+    <td class="num"><span class="amount">{formatMoney(e.amount, e.currency)}</span></td>
     <td class="num">
       {#if !e.exchange_id}
         {#if e.status === 'planned'}
           <button class="link neutral" aria-label="Confirmar gasto" onclick={() => confirmExpense(e)}>Confirmar</button>
         {/if}
         <button class="link neutral" aria-label="Editar gasto" onclick={() => edit(e)}>Editar</button>
+        <button
+          class="link neutral"
+          aria-label={e.disabled ? 'Activar gasto' : 'Desactivar gasto'}
+          onclick={() => toggleDisabled(e)}
+        >
+          {e.disabled ? 'Activar' : 'Desactivar'}
+        </button>
         <button class="link" aria-label="Eliminar gasto" onclick={() => remove(e)}>Eliminar</button>
       {/if}
     </td>
@@ -346,16 +313,8 @@
     <p class="error" role="alert">{loadError}</p>
   {:else if expenses.length}
     {#each groups as c (c.id)}
-      <details class="group">
-        <summary>
-          <span class="group-title">{c.name} <span class="muted">({c.items.length})</span></span>
-          <span class="group-total">
-            {formatMoney(c.total, currency)}
-            {#if compareAmounts(c.planned, '0') > 0}
-              <span class="muted">+ {formatMoney(c.planned, currency)} planeado</span>
-            {/if}
-          </span>
-        </summary>
+      <section class="category" aria-label={c.name}>
+        <h3>{c.name} <span class="muted">({c.items.length})</span></h3>
         <table>
           <thead>
             <tr>
@@ -366,10 +325,12 @@
             </tr>
           </thead>
           <tbody>
-            {@render lineRows(c.items, c.id, c.name)}
+            {#each c.items as e (e.id)}
+              {@render row(e, c.name)}
+            {/each}
           </tbody>
         </table>
-      </details>
+      </section>
     {/each}
   {:else}
     <p class="muted">Sin gastos en {currency} en este periodo.</p>
