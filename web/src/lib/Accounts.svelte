@@ -25,6 +25,10 @@
   let name = $state('')
   let amount = $state('')
   let editing = $state('')
+  // Bank the cash comes from (or goes back to). null: not chosen yet, so the first bank.
+  let fromId = $state<string | null>(null)
+  const sourceId = $derived(fromId ?? banks[0]?.id ?? '')
+  const source = $derived(banks.find((b) => b.id === sourceId))
   let editAmount = $state('')
   let formError = $state('')
   let busy = $state(false)
@@ -51,6 +55,17 @@
     if (cash && kind === 'cash') kind = 'bank'
   })
 
+  // Moving money into the cash takes it out of a bank: the bank's balance goes down by the same
+  // amount (or up when the cash goes down). Returns an error message, or '' when done.
+  async function moveFromBank(delta: string): Promise<string> {
+    if (!source || isZero(delta)) return ''
+    const { error, response } = await api.PATCH('/accounts/{id}', {
+      params: { path: { id: source.id } },
+      body: { balance: subtractAmounts(source.balance, delta) },
+    })
+    return error ? `El efectivo se guardó, pero no se pudo descontar de ${source.name}: ${failureMessage(response, error)}` : ''
+  }
+
   async function create(event: SubmitEvent) {
     event.preventDefault()
     formError = ''
@@ -68,9 +83,18 @@
         formError = failureMessage(response, error)
         return
       }
+      if (kind === 'cash') {
+        const problem = await moveFromBank(balance)
+        if (problem) {
+          formError = problem
+          onchange()
+          return
+        }
+      }
       adding = false
       name = ''
       amount = ''
+      fromId = null
       onchange()
     } catch {
       formError = connectionError
@@ -82,6 +106,7 @@
   function edit(account: Schemas['Account']) {
     editing = account.id
     editAmount = account.balance
+    fromId = null
     formError = ''
   }
 
@@ -103,6 +128,14 @@
         formError = failureMessage(response, error)
         return
       }
+      if (account.kind === 'cash') {
+        const problem = await moveFromBank(subtractAmounts(balance, account.balance))
+        if (problem) {
+          formError = problem
+          onchange()
+          return
+        }
+      }
       editing = ''
       onchange()
     } catch {
@@ -123,6 +156,25 @@
     }
   }
 </script>
+
+{#snippet fromBank(delta: string | null)}
+  {#if banks.length}
+    <label>
+      Descontar de
+      <select value={sourceId} onchange={(e) => (fromId = e.currentTarget.value)}>
+        {#each banks as b (b.id)}<option value={b.id}>{b.name}</option>{/each}
+        <option value="">Ninguna</option>
+      </select>
+    </label>
+    {#if source && delta && !isZero(delta)}
+      <span class="muted">
+        {isNegative(delta) ? 'Se devolverán' : 'Se descontarán'}
+        {formatMoney(isNegative(delta) ? subtractAmounts('0.00', delta) : delta, currency)}
+        {isNegative(delta) ? 'a' : 'de'} {source.name}
+      </span>
+    {/if}
+  {/if}
+{/snippet}
 
 <section class="panel" aria-labelledby="accounts-title">
   <div class="panel-head">
@@ -151,6 +203,7 @@
         Saldo en {currency}
         <input bind:value={amount} inputmode="decimal" placeholder="0.00" required />
       </label>
+      {#if kind === 'cash'}{@render fromBank(parseSigned(amount))}{/if}
       {#if formError}<p class="error wide" role="alert">{formError}</p>{/if}
       <div class="wide"><button class="primary" disabled={busy || !amount}>Guardar cuenta</button></div>
     </form>
@@ -159,10 +212,11 @@
   {#if loadError}
     <p class="error" role="alert">{loadError}</p>
   {:else if accounts.length}
-    <table>
+    <table class="fixed">
+      <colgroup><col class="c-date" /><col /><col class="c-amount" /><col class="c-actions" /></colgroup>
       <thead>
         <tr>
-          <th>Cuenta</th>
+          <th colspan="2">Cuenta</th>
           <th class="num">Saldo</th>
           <th></th>
         </tr>
@@ -170,7 +224,7 @@
       <tbody>
         {#each [...(cash ? [cash] : []), ...banks] as a (a.id)}
           <tr>
-            <td>
+            <td colspan="2">
               {a.name}
               {#if a.balance !== a.amount}
                 <span class="muted">(registraste {formatMoney(a.amount, a.currency)})</span>
@@ -180,6 +234,10 @@
               <td class="num" colspan="2">
                 <form class="inline-edit" onsubmit={(e) => save(e, a)}>
                   <input bind:value={editAmount} inputmode="decimal" aria-label="Saldo de {a.name}" required />
+                  {#if a.kind === 'cash'}
+                    {@const typed = parseSigned(editAmount)}
+                    {@render fromBank(typed ? subtractAmounts(typed, a.balance) : null)}
+                  {/if}
                   <button class="primary" disabled={busy}>Guardar</button>
                   <button type="button" class="link neutral" onclick={() => (editing = '')}>Cancelar</button>
                 </form>
@@ -198,12 +256,12 @@
       {#if accounts.length}
         <tfoot>
           <tr>
-            <td>En bancos</td>
+            <td colspan="2">En bancos</td>
             <td class="num">{formatMoney(inBanks, currency)}</td>
             <td></td>
           </tr>
           <tr>
-            <td>Sin asignar <span class="muted">(Disponible − bancos)</span></td>
+            <td colspan="2">Sin asignar</td>
             <td class="num" class:negative={isNegative(unassigned)}>{formatMoney(unassigned, currency)}</td>
             <td></td>
           </tr>
@@ -217,7 +275,6 @@
           : 'Falta repartir esa plata entre tus bancos: los ingresos no suman solos, escribe el saldo nuevo.'}
       </p>
     {/if}
-    <p class="muted">Cada gasto descuenta de la cuenta que elijas al registrarlo. El efectivo no cuenta en el Disponible: lo que tienes en efectivo ya está fuera de él.</p>
   {:else}
     <p class="muted">Registra tu efectivo y tus cuentas de banco en {currency} para ver cuánto queda en cada una.</p>
   {/if}
