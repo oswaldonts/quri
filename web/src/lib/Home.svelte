@@ -296,10 +296,11 @@
           </dl>
 
           {#if c.expenses?.length}
-            <table>
+            <table class="fixed">
+              <colgroup><col class="c-date" /><col /><col class="c-amount" /><col class="c-half" /><col class="c-half" /></colgroup>
               <thead>
                 <tr>
-                  <th>Categoría</th>
+                  <th colspan="2">Categoría</th>
                   <th class="num">Gastado</th>
                   <th class="num">Presupuesto</th>
                   <th class="num">Restante</th>
@@ -308,7 +309,7 @@
               <tbody>
                 {#each c.expenses as e (e.category_id)}
                   <tr>
-                    <td>{e.name}</td>
+                    <td colspan="2">{e.name}</td>
                     <td class="num">{formatMoney(e.spent, c.currency)}</td>
                     <td class="num">{e.budget ? formatMoney(e.budget, c.currency) : '—'}</td>
                     <td class="num" class:negative={e.remaining !== undefined && isNegative(e.remaining)}>

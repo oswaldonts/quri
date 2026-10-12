@@ -286,7 +286,7 @@
   {#if loadError}
     <p class="error" role="alert">{loadError}</p>
   {:else if exchanges.length}
-    <table>
+    <table class="list">
       <thead>
         <tr>
           <th>Fecha</th>

@@ -315,7 +315,7 @@
     {#each groups as c (c.id)}
       <section class="category" aria-label={c.name}>
         <h3>{c.name} <span class="muted">({c.items.length})</span></h3>
-        <table>
+        <table class="list">
           <thead>
             <tr>
               <th>Fecha</th>

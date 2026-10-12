@@ -452,3 +452,45 @@ tr.off td:not(:last-child) {
 tr.off .amount {
   text-decoration: line-through;
 }
+
+/* Entry lists: same column widths in every table, the rest goes to the description */
+@media (min-width: 40rem) {
+  table.list {
+    table-layout: fixed;
+  }
+
+  table.list th:first-child {
+    width: 7.5rem;
+  }
+
+  table.list th.num {
+    width: 9rem;
+  }
+
+  table.list th:last-child {
+    width: 17rem;
+  }
+}
+
+/* Tables that line up with the entry lists: date + description, amount, then the actions column */
+@media (min-width: 40rem) {
+  table.fixed {
+    table-layout: fixed;
+  }
+
+  col.c-date {
+    width: 7.5rem;
+  }
+
+  col.c-amount {
+    width: 9rem;
+  }
+
+  col.c-half {
+    width: 8.5rem;
+  }
+
+  col.c-actions {
+    width: 17rem;
+  }
+}

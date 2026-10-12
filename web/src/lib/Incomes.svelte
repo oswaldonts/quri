@@ -208,7 +208,7 @@
   {#if loadError}
     <p class="error" role="alert">{loadError}</p>
   {:else if incomes.length}
-    <table>
+    <table class="list">
       <thead>
         <tr>
           <th>Fecha</th>
