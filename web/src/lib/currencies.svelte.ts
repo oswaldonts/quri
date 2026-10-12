@@ -1,4 +1,4 @@
-import { api, type Schemas } from './api'
+import { api, failureMessage, type Schemas } from './api'
 
 // The currencies the user registered (Ajustes). Amounts can only be in these, and their
 // symbols are what formatMoney shows; a currency without a symbol is shown with its code.
@@ -12,6 +12,13 @@ class Currencies {
 
   symbol(code: string): string {
     return this.list.find((c) => c.code === code)?.symbol ?? ''
+  }
+
+  // Saves a new order; returns the error message to show, or '' when it was saved.
+  async reorder(codes: string[]): Promise<string> {
+    const { data, error, response } = await api.PUT('/currencies/order', { body: { codes } })
+    if (data) this.list = data
+    return error ? failureMessage(response, error) : ''
   }
 
   async load() {

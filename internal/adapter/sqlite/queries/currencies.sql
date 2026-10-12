@@ -1,11 +1,15 @@
 -- name: InsertCurrency :exec
-INSERT INTO currencies (code, symbol) VALUES (?, ?);
+INSERT INTO currencies (code, symbol, position)
+VALUES (?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM currencies));
 
 -- name: GetCurrency :one
 SELECT code, symbol FROM currencies WHERE code = ?;
 
 -- name: ListCurrencies :many
-SELECT code, symbol FROM currencies ORDER BY code;
+SELECT code, symbol FROM currencies ORDER BY position, code;
+
+-- name: SetCurrencyPosition :exec
+UPDATE currencies SET position = ? WHERE code = ?;
 
 -- name: UpdateCurrency :execrows
 UPDATE currencies SET symbol = ? WHERE code = ?;

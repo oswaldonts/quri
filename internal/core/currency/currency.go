@@ -41,8 +41,10 @@ type Repository interface {
 	Update(ctx context.Context, c Currency) error
 	// Delete returns ErrNotFound if the code is not registered.
 	Delete(ctx context.Context, code money.Currency) error
-	// List returns every currency ordered by code.
+	// List returns every currency in the order the user chose.
 	List(ctx context.Context) ([]Currency, error)
+	// SetOrder gives the currencies the positions of codes.
+	SetOrder(ctx context.Context, codes []money.Currency) error
 	// InUse tells whether any amount (income, expense, account, rate...) is in the currency.
 	InUse(ctx context.Context, code money.Currency) (bool, error)
 }
@@ -127,6 +129,37 @@ func (s *Service) List(ctx context.Context) ([]Currency, error) {
 		return nil, fmt.Errorf("list currencies: %w", err)
 	}
 	return out, nil
+}
+
+// Reorder sets the order of the list; codes must be exactly the registered currencies.
+func (s *Service) Reorder(ctx context.Context, codes []string) ([]Currency, error) {
+	current, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(codes) != len(current) {
+		return nil, invalid(fmt.Errorf("the order must list all %d registered currencies, got %d", len(current), len(codes)))
+	}
+	registered := make(map[money.Currency]bool, len(current))
+	for _, c := range current {
+		registered[c.Code] = true
+	}
+	ordered := make([]money.Currency, 0, len(codes))
+	for _, raw := range codes {
+		code, err := money.ParseCurrency(raw)
+		if err != nil {
+			return nil, invalid(err)
+		}
+		if !registered[code] {
+			return nil, invalid(fmt.Errorf("%s is not a registered currency or is repeated", code))
+		}
+		delete(registered, code)
+		ordered = append(ordered, code)
+	}
+	if err := s.repo.SetOrder(ctx, ordered); err != nil {
+		return nil, fmt.Errorf("set currency order: %w", err)
+	}
+	return s.List(ctx)
 }
 
 // Require checks that c is registered.

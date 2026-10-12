@@ -19,12 +19,13 @@ var _ currency.Repository = (*CurrencyRepository)(nil)
 
 // CurrencyRepository stores the registered currencies in SQLite.
 type CurrencyRepository struct {
-	q *sqlitedb.Queries
+	db *sql.DB
+	q  *sqlitedb.Queries
 }
 
 // NewCurrencyRepository returns a repository backed by db.
 func NewCurrencyRepository(db *sql.DB) *CurrencyRepository {
-	return &CurrencyRepository{q: sqlitedb.New(db)}
+	return &CurrencyRepository{db: db, q: sqlitedb.New(db)}
 }
 
 // Save inserts the currency; a repeated code is currency.ErrExists.
@@ -61,7 +62,7 @@ func (r *CurrencyRepository) Delete(ctx context.Context, code money.Currency) er
 	return notFoundIfNone(n, err, currency.ErrNotFound, string(code))
 }
 
-// List returns every currency ordered by code.
+// List returns every currency in the order the user chose.
 func (r *CurrencyRepository) List(ctx context.Context) ([]currency.Currency, error) {
 	rows, err := r.q.ListCurrencies(ctx)
 	if err != nil {
@@ -78,4 +79,21 @@ func (r *CurrencyRepository) List(ctx context.Context) ([]currency.Currency, err
 func (r *CurrencyRepository) InUse(ctx context.Context, code money.Currency) (bool, error) {
 	in, err := r.q.CurrencyInUse(ctx, string(code))
 	return in.Bool, err
+}
+
+// SetOrder gives the currencies the positions of codes, in one transaction.
+func (r *CurrencyRepository) SetOrder(ctx context.Context, codes []money.Currency) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := r.q.WithTx(tx)
+	for i, code := range codes {
+		if err := q.SetCurrencyPosition(ctx, sqlitedb.SetCurrencyPositionParams{Position: int64(i), Code: string(code)}); err != nil {
+			return fmt.Errorf("set position of %s: %w", code, err)
+		}
+	}
+	return tx.Commit()
 }

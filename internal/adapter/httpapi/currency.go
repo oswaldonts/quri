@@ -15,6 +15,7 @@ type CurrencyService interface {
 	Update(ctx context.Context, code string, symbol string) (currency.Currency, error)
 	Delete(ctx context.Context, code string) error
 	List(ctx context.Context) ([]currency.Currency, error)
+	Reorder(ctx context.Context, codes []string) ([]currency.Currency, error)
 }
 
 // Currency is a currency registered by the user.
@@ -58,6 +59,13 @@ type UpdateCurrencyInput struct {
 	}
 }
 
+// ReorderCurrenciesInput is the request of PUT /currencies/order.
+type ReorderCurrenciesInput struct {
+	Body struct {
+		Codes []string `json:"codes" minItems:"1" maxItems:"200" example:"USD,PEN" doc:"Every registered currency, in the order to list them."`
+	}
+}
+
 func registerCurrencies(api huma.API, currencies CurrencyService) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "create-currency",
@@ -86,6 +94,26 @@ func registerCurrencies(api huma.API, currencies CurrencyService) {
 		cs, err := currencies.List(ctx)
 		if err != nil {
 			return nil, toHTTPError(ctx, "list currencies", err)
+		}
+		out := &CurrencyListOutput{Body: make([]Currency, 0, len(cs))}
+		for _, c := range cs {
+			out.Body = append(out.Body, toCurrency(c))
+		}
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "reorder-currencies",
+		Method:      http.MethodPut,
+		Path:        "/currencies/order",
+		Summary:     "Choose the order of the currency list",
+		Description: "The list order is the order of the sheets and selectors. Send every registered currency exactly once.",
+		Tags:        []string{tagCurrencies},
+		Errors:      []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *ReorderCurrenciesInput) (*CurrencyListOutput, error) {
+		cs, err := currencies.Reorder(ctx, in.Body.Codes)
+		if err != nil {
+			return nil, toHTTPError(ctx, "reorder currencies", err)
 		}
 		out := &CurrencyListOutput{Body: make([]Currency, 0, len(cs))}
 		for _, c := range cs {

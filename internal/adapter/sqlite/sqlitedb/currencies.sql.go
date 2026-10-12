@@ -45,15 +45,21 @@ const getCurrency = `-- name: GetCurrency :one
 SELECT code, symbol FROM currencies WHERE code = ?
 `
 
-func (q *Queries) GetCurrency(ctx context.Context, code string) (Currency, error) {
+type GetCurrencyRow struct {
+	Code   string
+	Symbol string
+}
+
+func (q *Queries) GetCurrency(ctx context.Context, code string) (GetCurrencyRow, error) {
 	row := q.db.QueryRowContext(ctx, getCurrency, code)
-	var i Currency
+	var i GetCurrencyRow
 	err := row.Scan(&i.Code, &i.Symbol)
 	return i, err
 }
 
 const insertCurrency = `-- name: InsertCurrency :exec
-INSERT INTO currencies (code, symbol) VALUES (?, ?)
+INSERT INTO currencies (code, symbol, position)
+VALUES (?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM currencies))
 `
 
 type InsertCurrencyParams struct {
@@ -67,18 +73,23 @@ func (q *Queries) InsertCurrency(ctx context.Context, arg InsertCurrencyParams) 
 }
 
 const listCurrencies = `-- name: ListCurrencies :many
-SELECT code, symbol FROM currencies ORDER BY code
+SELECT code, symbol FROM currencies ORDER BY position, code
 `
 
-func (q *Queries) ListCurrencies(ctx context.Context) ([]Currency, error) {
+type ListCurrenciesRow struct {
+	Code   string
+	Symbol string
+}
+
+func (q *Queries) ListCurrencies(ctx context.Context) ([]ListCurrenciesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listCurrencies)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Currency{}
+	items := []ListCurrenciesRow{}
 	for rows.Next() {
-		var i Currency
+		var i ListCurrenciesRow
 		if err := rows.Scan(&i.Code, &i.Symbol); err != nil {
 			return nil, err
 		}
@@ -91,6 +102,20 @@ func (q *Queries) ListCurrencies(ctx context.Context) ([]Currency, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setCurrencyPosition = `-- name: SetCurrencyPosition :exec
+UPDATE currencies SET position = ? WHERE code = ?
+`
+
+type SetCurrencyPositionParams struct {
+	Position int64
+	Code     string
+}
+
+func (q *Queries) SetCurrencyPosition(ctx context.Context, arg SetCurrencyPositionParams) error {
+	_, err := q.db.ExecContext(ctx, setCurrencyPosition, arg.Position, arg.Code)
+	return err
 }
 
 const updateCurrency = `-- name: UpdateCurrency :execrows

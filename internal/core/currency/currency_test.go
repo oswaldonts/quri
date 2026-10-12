@@ -9,6 +9,7 @@ import (
 )
 
 type fakeRepo struct {
+	order []money.Currency
 	items map[money.Currency]Currency
 	used  map[money.Currency]bool
 }
@@ -18,6 +19,7 @@ func (f *fakeRepo) Save(_ context.Context, c Currency) error {
 		return ErrExists
 	}
 	f.items[c.Code] = c
+	f.order = append(f.order, c.Code)
 	return nil
 }
 
@@ -42,7 +44,20 @@ func (f *fakeRepo) Delete(_ context.Context, code money.Currency) error {
 	return nil
 }
 
-func (f *fakeRepo) List(context.Context) ([]Currency, error) { return nil, nil }
+func (f *fakeRepo) List(context.Context) ([]Currency, error) {
+	var out []Currency
+	for _, code := range f.order {
+		if c, ok := f.items[code]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRepo) SetOrder(_ context.Context, codes []money.Currency) error {
+	f.order = codes
+	return nil
+}
 
 func (f *fakeRepo) InUse(_ context.Context, code money.Currency) (bool, error) {
 	return f.used[code], nil
@@ -104,5 +119,30 @@ func TestDeleteRefusesCurrenciesInUse(t *testing.T) {
 	}
 	if err := s.Delete(ctx, "EUR"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing: error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestReorder(t *testing.T) {
+	s, _ := newService()
+	ctx := context.Background()
+	for _, code := range []string{"PEN", "USD", "EUR"} {
+		if _, err := s.Create(ctx, CreateInput{Code: code}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.Reorder(ctx, []string{"usd", "PEN", "EUR"})
+	if err != nil || got[0].Code != "USD" || got[1].Code != "PEN" || got[2].Code != "EUR" {
+		t.Fatalf("Reorder = %+v, %v", got, err)
+	}
+	for name, codes := range map[string][]string{
+		"missing":      {"USD", "PEN"},
+		"repeated":     {"USD", "USD", "PEN"},
+		"unregistered": {"USD", "PEN", "GBP"},
+		"malformed":    {"USD", "PEN", "EURO"},
+	} {
+		if _, err := s.Reorder(ctx, codes); !errors.Is(err, ErrInvalidInput) {
+			t.Errorf("%s: error = %v, want ErrInvalidInput", name, err)
+		}
 	}
 }
