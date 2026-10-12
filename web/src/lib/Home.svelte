@@ -9,7 +9,7 @@
   import Reports from './Reports.svelte'
   import Settings from './Settings.svelte'
   import { currencies } from './currencies.svelte'
-  import { formatMoney, isNegative, isZero, type Currency } from './money'
+  import { formatMoney, isNegative, isZero, subtractAmounts, type Currency } from './money'
   import { session } from './session.svelte'
   import { settings } from './settings.svelte'
 
@@ -122,6 +122,24 @@
   let loading = $state(false)
   // Bumped after an income or expense is saved, so the summary is fetched again.
   let version = $state(0)
+
+  // The cash is left out of the Disponible: it isn't controlled as closely as the bank accounts. It is
+  // a figure of today, so closed periods keep their plain Disponible.
+  let cashBalances = $state<Record<string, string>>({})
+  const cashHere = $derived(mode === 'past' ? '0.00' : (cashBalances[sheet] ?? '0.00'))
+  const withoutCash = (available: string) => subtractAmounts(available, cashHere)
+
+  $effect(() => {
+    void version
+    const controller = new AbortController()
+    api
+      .GET('/accounts', { signal: controller.signal })
+      .then(({ data }) => {
+        if (data) cashBalances = Object.fromEntries(data.filter((a) => a.kind === 'cash').map((a) => [a.currency, a.balance]))
+      })
+      .catch(() => {})
+    return () => controller.abort()
+  })
 
   // Reloads whenever the period changes; the cleanup cancels a request that is still in
   // flight, so a slow answer for an old period can't overwrite the current one.
@@ -260,8 +278,8 @@
             </div>
             <div>
               <dt>Disponible</dt>
-              <dd class:negative={isNegative(c.available)}>{formatMoney(c.available, c.currency)}</dd>
-              <dd class="detail">Arrastrado + Ingresos − Gastado</dd>
+              <dd class:negative={isNegative(withoutCash(c.available))}>{formatMoney(withoutCash(c.available), c.currency)}</dd>
+              {#if isZero(cashHere)}<dd class="detail">Arrastrado + Ingresos − Gastado</dd>{/if}
             </div>
             {#if c.real !== undefined}
               <div>
@@ -314,7 +332,7 @@
     {#if mode === 'current'}
       <Accounts
         currency={sheet}
-        available={summary?.currencies?.find((x) => x.currency === sheet)?.available ?? '0.00'}
+        available={withoutCash(summary?.currencies?.find((x) => x.currency === sheet)?.available ?? '0.00')}
         refresh={version}
         onchange={() => version++}
       />
