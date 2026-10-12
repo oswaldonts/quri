@@ -305,11 +305,6 @@ button.link {
   color: var(--muted);
 }
 
-.formula {
-  margin: 0;
-  font-size: 0.8rem;
-}
-
 .modes,
 .segmented {
   display: inline-flex;
@@ -509,4 +504,12 @@ tfoot td {
   .entry-form .row .grow {
     grid-column: span 2;
   }
+}
+
+tr.sum-row td {
+  font-weight: 600;
+}
+
+tr.sum-row .muted {
+  font-weight: 400;
 }

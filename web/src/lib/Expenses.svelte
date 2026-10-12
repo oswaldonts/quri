@@ -14,10 +14,7 @@
   } = $props()
 
   let all = $state<Schemas['Expense'][]>([])
-  const inCurrency = $derived(all.filter((e) => e.currency === currency))
-  // Expenses paid from the cash are listed apart: they don't count in the summary, only lower the cash.
-  const expenses = $derived(inCurrency.filter((e) => !e.cash))
-  const cashExpenses = $derived(inCurrency.filter((e) => e.cash))
+  const expenses = $derived(all.filter((e) => e.currency === currency))
   let categories = $state<Schemas['Category'][]>([])
   // Exchanges have their own flow: the API refuses a plain expense in a system category.
   const choosable = $derived(categories.filter((c) => !c.system))
@@ -210,8 +207,60 @@
       .map(([id, items]) => ({ id, name: categoryName(id), total: happened(items), planned: upcoming(items), items }))
       .sort((a, b) => compareAmounts(b.total, a.total) || a.name.localeCompare(b.name))
   })
+
+  type Line = { key: string; label: string; total: string; planned: string; items: Schemas['Expense'][] }
+
+  // Entries with the same description (ignoring case and spacing) are one line with their sum; the
+  // dates and amounts of each one are in its detail. Entries without a description stay apart.
+  function lines(items: Schemas['Expense'][]): Line[] {
+    const byText = new Map<string, Schemas['Expense'][]>()
+    for (const e of items) {
+      const text = e.description.trim().toLocaleLowerCase()
+      const key = text || `#${e.id}`
+      byText.set(key, [...(byText.get(key) ?? []), e])
+    }
+    return [...byText].map(([key, group]) => ({
+      key,
+      label: group[0].description.trim(),
+      total: happened(group),
+      planned: upcoming(group),
+      items: group,
+    }))
+  }
+
+  let expanded = $state<Record<string, boolean>>({})
+  const toggle = (id: string) => (expanded[id] = !expanded[id])
 </script>
 
+{#snippet lineRows(items: Schemas['Expense'][], groupId: string, fallback: string)}
+  {#each lines(items) as l (l.key)}
+    {#if l.items.length === 1}
+      {@render row(l.items[0], fallback)}
+    {:else}
+      {@const id = `${groupId}|${l.key}`}
+      <tr class="sum-row">
+        <td colspan="2">
+          <button class="link neutral" aria-expanded={!!expanded[id]} onclick={() => toggle(id)}>
+            {expanded[id] ? '▾' : '▸'} {l.label}
+          </button>
+          <span class="badge">×{l.items.length}</span>
+        </td>
+        <td class="num">
+          {formatMoney(l.total, currency)}
+          {#if compareAmounts(l.planned, '0') > 0}
+            <span class="muted">+ {formatMoney(l.planned, currency)} planeado</span>
+          {/if}
+        </td>
+        <td></td>
+      </tr>
+      {#if expanded[id]}
+        {#each l.items as e (e.id)}
+          {@render row(e, fallback)}
+        {/each}
+      {/if}
+    {/if}
+  {/each}
+{/snippet}
 
 {#snippet row(e: Schemas['Expense'], fallback: string)}
   <tr>
@@ -279,7 +328,7 @@
         </label>
       </div>
       {#if accountId && choosableAccounts.find((a) => a.id === accountId)?.kind === 'cash'}
-        <p class="muted wide">El efectivo no forma parte del Disponible: este gasto solo baja el efectivo.</p>
+        <p class="muted wide">Baja el saldo del efectivo, como cualquier gasto baja la cuenta de donde sale.</p>
       {/if}
       {#if formError}<p class="error wide" role="alert">{formError}</p>{/if}
       <div class="wide actions">
@@ -295,7 +344,7 @@
 
   {#if loadError}
     <p class="error" role="alert">{loadError}</p>
-  {:else if inCurrency.length}
+  {:else if expenses.length}
     {#each groups as c (c.id)}
       <details class="group">
         <summary>
@@ -317,36 +366,11 @@
             </tr>
           </thead>
           <tbody>
-            {#each c.items as e (e.id)}
-              {@render row(e, c.name)}
-            {/each}
+            {@render lineRows(c.items, c.id, c.name)}
           </tbody>
         </table>
       </details>
     {/each}
-    {#if cashExpenses.length}
-      <details class="group">
-        <summary>
-          <span class="group-title">Efectivo <span class="muted">({cashExpenses.length})</span></span>
-          <span class="group-total">{formatMoney(happened(cashExpenses), currency)}</span>
-        </summary>
-        <table>
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Detalle</th>
-              <th class="num">Monto</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each cashExpenses as e (e.id)}
-              {@render row(e, categoryName(e.category_id))}
-            {/each}
-          </tbody>
-        </table>
-      </details>
-    {/if}
   {:else}
     <p class="muted">Sin gastos en {currency} en este periodo.</p>
   {/if}
