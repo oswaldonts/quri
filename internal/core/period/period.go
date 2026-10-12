@@ -35,15 +35,15 @@ func (p Period) Year() int { return p.year }
 // Month returns the month the money was earned.
 func (p Period) Month() time.Month { return p.month }
 
-// SpendMonth returns the month in which this period's money is spent.
-func (p Period) SpendMonth() Period {
-	// time.Date normalizes month 13 into January of the next year.
-	t := time.Date(p.year, p.month+1, 1, 0, 0, 0, 0, time.UTC)
+// Shift returns the period months later (earlier when negative).
+func (p Period) Shift(months int) Period {
+	// time.Date normalizes out-of-range months into the neighboring years.
+	t := time.Date(p.year, p.month+time.Month(months), 1, 0, 0, 0, 0, time.UTC)
 	return Period{year: t.Year(), month: t.Month()}
 }
 
-// Next returns the following period (same as SpendMonth, named for iteration).
-func (p Period) Next() Period { return p.SpendMonth() }
+// Next returns the following period.
+func (p Period) Next() Period { return p.Shift(1) }
 
 // Compare returns -1, 0 or +1 when p is before, equal to or after q.
 func (p Period) Compare(q Period) int {

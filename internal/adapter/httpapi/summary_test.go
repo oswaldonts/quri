@@ -31,7 +31,7 @@ func TestSummary(t *testing.T) {
 	var s Summary
 	decode(t, rec, &s)
 
-	if s.Period != "2026-07" || s.SpendMonth != "2026-08" || len(s.Currencies) != 2 {
+	if s.Period != "2026-07" || s.SpendMonth != "2026-07" || len(s.Currencies) != 2 {
 		t.Fatalf("summary = %+v", s)
 	}
 	pen, usd := s.Currencies[0], s.Currencies[1]
@@ -84,4 +84,24 @@ func TestCurrencySummaryWithoutActivity(t *testing.T) {
 		t.Errorf("empty ARS summary = %+v", s)
 	}
 	assertProblem(t, send(h, http.MethodGet, "/periods/2030-01/summary/EURO", ""), http.StatusUnprocessableEntity)
+}
+
+func TestSummaryCountsCashSpendingLikeAnyOther(t *testing.T) {
+	h := newTestRouter(t)
+	var cash, bank Account
+	decode(t, send(h, http.MethodPost, "/accounts", `{"kind":"cash","currency":"PEN","balance":"200"}`), &cash)
+	decode(t, send(h, http.MethodPost, "/accounts", `{"kind":"bank","currency":"PEN","name":"BCP","balance":"1000"}`), &bank)
+	send(h, http.MethodPost, "/periods/2026-07/incomes", `{"currency": "PEN", "amount": "1000", "kind": "salary", "received_on": "2026-07-31"}`)
+	send(h, http.MethodPost, "/periods/2026-07/expenses", `{"category_id": "market", "currency": "PEN", "amount": "100", "spent_on": "2026-08-03", "account_id": "`+bank.ID+`"}`)
+	send(h, http.MethodPost, "/periods/2026-07/expenses", `{"category_id": "market", "currency": "PEN", "amount": "50", "spent_on": "2026-08-04", "account_id": "`+cash.ID+`"}`)
+
+	var s Summary
+	decode(t, send(h, http.MethodGet, "/periods/2026-07/summary", ""), &s)
+	pen := s.Currencies[0]
+	if pen.Spent != "150.00" || pen.Available != "850.00" {
+		t.Errorf("spent/available = %s/%s, want 150.00/850.00", pen.Spent, pen.Available)
+	}
+	if len(pen.Expenses) != 1 || pen.Expenses[0].Spent != "150.00" {
+		t.Errorf("category totals = %+v, want market with 150.00", pen.Expenses)
+	}
 }

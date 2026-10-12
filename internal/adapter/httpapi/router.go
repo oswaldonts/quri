@@ -23,7 +23,7 @@ const (
 const apiDescription = `Personal income and expense manager.
 
 Budgets are organized by **period**: the month the money was earned (YYYY-MM).
-That money is spent during the following month (spend_month).
+That money is spent the same month or the following one, depending on the spend_offset setting (spend_month).
 
 **Amounts** are decimal strings ("1330.00"), never JSON numbers, to avoid floating
 point rounding. Currencies are ISO 4217 codes.
@@ -45,6 +45,7 @@ type Services struct {
 	Exchanges  ExchangeService
 	Accounts   AccountService
 	Currencies CurrencyService
+	Settings   SettingsService
 }
 
 // NewRouter builds the HTTP handler with all routes, middlewares and docs.
@@ -63,13 +64,13 @@ func NewRouter(s Services, logger *slog.Logger) http.Handler {
 	registerHealth(api)
 	registerAuth(api, s.Auth)
 	registerCategories(api, s.Categories)
-	registerIncomes(api, s.Incomes)
-	registerIncomeEdits(api, s.Incomes)
+	registerIncomes(api, s.Incomes, s.Settings)
+	registerIncomeEdits(api, s.Incomes, s.Settings)
 	registerExpenses(api, s.Expenses)
 	registerExpenseBatch(api, s.Expenses)
 	registerExpenseEdits(api, s.Expenses)
 	registerBalances(api, s.Balances)
-	registerSummary(api, s.Summaries)
+	registerSummary(api, s.Summaries, s.Settings)
 	registerAvailable(api, s.Summaries)
 	registerTrends(api, s.Summaries)
 	registerBudgets(api, s.Budgets)
@@ -77,6 +78,7 @@ func NewRouter(s Services, logger *slog.Logger) http.Handler {
 	registerExchanges(api, s.Exchanges)
 	registerAccounts(api, s.Accounts)
 	registerCurrencies(api, s.Currencies)
+	registerSettings(api, s.Settings)
 
 	return r
 }
@@ -104,6 +106,7 @@ func newConfig() huma.Config {
 		{Name: tagBudgets, Description: "Planned amount per category, compared with what was spent."},
 		{Name: tagRates, Description: "Exchange rate chosen for each period and currency pair."},
 		{Name: tagExchanges, Description: "Currency conversions made with the period rate."},
+		{Name: tagSettings, Description: "Preferences of the installation, e.g. in which month the money earned is spent."},
 		{Name: tagCurrencies, Description: "The currencies amounts can be in. Managed by the user: add the ones you use."},
 		{Name: tagAccounts, Description: "Where the money is: the cash on hand and the bank accounts. Balances are typed by hand and go down with the expenses charged to each account."},
 	}
@@ -123,4 +126,5 @@ const (
 	tagExchanges  = "Exchanges"
 	tagAccounts   = "Accounts"
 	tagCurrencies = "Currencies"
+	tagSettings   = "Settings"
 )

@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * List the cash and the bank accounts
-         * @description Cash first, then the banks by name, per currency. The cash balance already discounts the cash expenses.
+         * @description Cash first, then the banks by name, per currency. The balance of each account already discounts the expenses charged to it.
          */
         get: operations["list-accounts"];
         put?: never;
@@ -102,6 +102,26 @@ export interface paths {
          * @description Amounts can only be in registered currencies. A few common ones come registered; add the ones you use.
          */
         post: operations["create-currency"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/currencies/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Choose the order of the currency list
+         * @description The list order is the order of the sheets and selectors. Send every registered currency exactly once.
+         */
+        put: operations["reorder-currencies"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -555,6 +575,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the settings */
+        get: operations["get-settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the settings
+         * @description Changing spend_offset only changes which month each period's money is said to be spent in; nothing stored is modified.
+         */
+        patch: operations["update-settings"];
+        trace?: never;
+    };
     "/setup": {
         parameters: {
             query?: never;
@@ -882,8 +923,6 @@ export interface components {
             account_id?: string;
             /** @example 45.50 */
             amount: string;
-            /** @description True when the account is the cash: the expense is left out of the period summary, whose available money is what is in the banks. */
-            cash: boolean;
             /** @example market */
             category_id: string;
             /** Format: date-time */
@@ -1203,6 +1242,16 @@ export interface components {
              */
             status?: "planned" | "confirmed";
         };
+        ReorderCurrenciesInputBody: {
+            /**
+             * @description Every registered currency, in the order to list them.
+             * @example [
+             *       "USD",
+             *       "PEN"
+             *     ]
+             */
+            codes: string[] | null;
+        };
         SetBalanceInputBody: {
             /**
              * @description Real money in the currency (accounts plus cash). May be negative, e.g. a credit card debt.
@@ -1223,6 +1272,18 @@ export interface components {
              * @example 3.25
              */
             rate: string;
+        };
+        Settings: {
+            /**
+             * @description Currency the app opens in. Empty: the first one in the currency list.
+             * @example USD
+             */
+            default_currency: string;
+            /**
+             * Format: int64
+             * @description Months between earning money and spending it: 0 spends it the same month, 1 the following one.
+             */
+            spend_offset: number;
         };
         SetupInputBody: {
             password: string;
@@ -1332,6 +1393,12 @@ export interface components {
              * @enum {string}
              */
             status?: "planned" | "confirmed";
+        };
+        UpdateSettingsInputBody: {
+            /** @description A registered currency; empty clears it. */
+            default_currency?: string;
+            /** Format: int64 */
+            spend_offset?: number;
         };
     };
     responses: never;
@@ -1743,6 +1810,48 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "reorder-currencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderCurrenciesInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Currency"][] | null;
                 };
             };
             /** @description Unprocessable Entity */
@@ -3405,6 +3514,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PeriodCurrencySummary"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSettingsInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
                 };
             };
             /** @description Unprocessable Entity */

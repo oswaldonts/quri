@@ -78,11 +78,11 @@ type IncomeListOutput struct {
 	Body []Income
 }
 
-func toIncome(in income.Income) Income {
+func toIncome(in income.Income, offset int) Income {
 	return Income{
 		ID:          in.ID,
 		Period:      in.Period.String(),
-		SpendMonth:  in.Period.SpendMonth().String(),
+		SpendMonth:  spendMonth(in.Period, offset),
 		Currency:    string(in.Amount.Currency()),
 		Amount:      in.Amount.String(),
 		Kind:        string(in.Kind),
@@ -94,7 +94,7 @@ func toIncome(in income.Income) Income {
 	}
 }
 
-func registerIncomes(api huma.API, incomes IncomeService) {
+func registerIncomes(api huma.API, incomes IncomeService, settings SettingsService) {
 	huma.Register(api, huma.Operation{
 		OperationID: "register-income",
 		Method:      http.MethodPost,
@@ -119,7 +119,11 @@ func registerIncomes(api huma.API, incomes IncomeService) {
 		if err != nil {
 			return nil, toHTTPError(ctx, "register income", err)
 		}
-		return &IncomeOutput{Body: toIncome(inc)}, nil
+		offset, err := settings.SpendOffset(ctx)
+		if err != nil {
+			return nil, toHTTPError(ctx, "get settings", err)
+		}
+		return &IncomeOutput{Body: toIncome(inc, offset)}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -135,15 +139,19 @@ func registerIncomes(api huma.API, incomes IncomeService) {
 		if err != nil {
 			return nil, toHTTPError(ctx, "list incomes", err)
 		}
+		offset, err := settings.SpendOffset(ctx)
+		if err != nil {
+			return nil, toHTTPError(ctx, "get settings", err)
+		}
 		out := &IncomeListOutput{Body: make([]Income, 0, len(incs))}
 		for _, inc := range incs {
-			out.Body = append(out.Body, toIncome(inc))
+			out.Body = append(out.Body, toIncome(inc, offset))
 		}
 		return out, nil
 	})
 }
 
-func registerIncomeEdits(api huma.API, incomes IncomeService) {
+func registerIncomeEdits(api huma.API, incomes IncomeService, settings SettingsService) {
 	huma.Register(api, huma.Operation{
 		OperationID: "update-income",
 		Method:      http.MethodPatch,
@@ -166,7 +174,11 @@ func registerIncomeEdits(api huma.API, incomes IncomeService) {
 		if err != nil {
 			return nil, toHTTPError(ctx, "update income", err)
 		}
-		return &IncomeOutput{Body: toIncome(inc)}, nil
+		offset, err := settings.SpendOffset(ctx)
+		if err != nil {
+			return nil, toHTTPError(ctx, "get settings", err)
+		}
+		return &IncomeOutput{Body: toIncome(inc, offset)}, nil
 	})
 
 	huma.Register(api, deleteOperation("delete-income", "/periods/{period}/incomes/{id}", "Delete an income",

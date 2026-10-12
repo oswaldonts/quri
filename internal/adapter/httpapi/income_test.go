@@ -32,7 +32,7 @@ func TestRegisterIncome(t *testing.T) {
 	want := Income{
 		ID:          got.ID,
 		Period:      "2026-07",
-		SpendMonth:  "2026-08",
+		SpendMonth:  "2026-07",
 		Currency:    "USD",
 		Amount:      "1330.00",
 		Kind:        "salary",

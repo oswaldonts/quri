@@ -19,6 +19,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/settings"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 )
 
@@ -87,6 +88,7 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		errors.Is(err, expense.ErrInvalidInput),
 		errors.Is(err, account.ErrInvalidInput),
 		errors.Is(err, currency.ErrInvalidInput),
+		errors.Is(err, settings.ErrInvalidInput),
 		errors.Is(err, balance.ErrInvalidInput),
 		errors.Is(err, summary.ErrInvalidInput),
 		errors.Is(err, budget.ErrInvalidInput):

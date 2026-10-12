@@ -27,6 +27,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/settings"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 	"github.com/oswaldoaquinas/go-income-mgr/web"
 )
@@ -70,6 +71,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	categoryRepo := sqlite.NewCategoryRepository(db)
 	categoryService := category.NewService(categoryRepo, categoryRepo)
 	currencyService := currency.NewService(sqlite.NewCurrencyRepository(db))
+	settingsService := settings.NewService(sqlite.NewSettingsRepository(db), currencyService)
 	incomeRepo := sqlite.NewIncomeRepository(db)
 	expenseRepo := sqlite.NewExpenseRepository(db)
 	balanceRepo := sqlite.NewBalanceRepository(db)
@@ -94,6 +96,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Exchanges:  exchangeService,
 		Accounts:   accountService,
 		Currencies: currencyService,
+		Settings:   settingsService,
 	}, logger)
 
 	// The frontend is embedded in the binary and served from the same origin as the API.

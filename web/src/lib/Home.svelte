@@ -11,36 +11,45 @@
   import { currencies } from './currencies.svelte'
   import { formatMoney, isNegative, isZero, type Currency } from './money'
   import { session } from './session.svelte'
+  import { settings } from './settings.svelte'
 
   const periodPattern = /^\d{4}-\d{2}$/
 
-  // The money earned in a month is spent the next one, so the period that is "live" is last
-  // month's: in October the user works with September's money.
+  // The money earned in a month is spent spendOffset months later (Ajustes), so the period that
+  // is "live" is that many months back: with 1, in October the user works with September's money.
   //   past:    periods before the live one (fix what was registered in the wrong place)
   //   current: only the live period (the default)
   //   plan:    this month and later, to plan what comes next
   type Mode = 'past' | 'current' | 'plan'
   const thisMonth = toPeriod(new Date())
-  const live = shift(thisMonth, -1)
+  const live = $derived(shift(thisMonth, -settings.spendOffset))
   const modes: { id: Mode; label: string }[] = [
     { id: 'past', label: 'Pasado' },
     { id: 'current', label: 'Actual' },
     { id: 'plan', label: 'Planificar' },
   ]
-  const inMode: Record<Mode, (p: string) => boolean> = {
+  const inMode: Record<Mode, (p: string) => boolean> = $derived({
     past: (p) => p < live,
     current: (p) => p === live,
     plan: (p) => p > live,
-  }
-  const startOf: Record<Mode, string> = { past: shift(live, -1), current: live, plan: thisMonth }
+  })
+  const startOf: Record<Mode, string> = $derived({ past: shift(live, -1), current: live, plan: shift(live, 1) })
 
   let mode = $state<Mode>('current')
   let view = $state<'movements' | 'reports' | 'settings'>('movements')
   // Lets the user see how the planned entries would change what is available.
   let includePlanned = $state(false)
   const projected = $derived(mode === 'plan' || includePlanned)
-  let period = $state(live)
+  let period = $state(toPeriod(new Date()))
   const valid = $derived(periodPattern.test(period) && inMode[mode](period))
+
+  // Once the offset is known (and whenever it changes) the screen goes back to the live period.
+  let offsetSeen = $state<number | null>(null)
+  $effect(() => {
+    if (!settings.loaded || offsetSeen === settings.spendOffset) return
+    offsetSeen = settings.spendOffset
+    period = startOf[mode]
+  })
 
   function setMode(next: Mode) {
     mode = next
@@ -71,14 +80,17 @@
     }
   }
 
-  // The first sheet: the one used last time, else the first currency with movements, else the
-  // first registered one. A sheet whose currency was removed in Ajustes is replaced the same way.
+  // The first sheet: the default currency (Ajustes), else the one used last time, else the first
+  // currency with movements, else the first registered one. A sheet whose currency was removed in Ajustes is replaced the same way.
   $effect(() => {
-    if (!currencies.loaded) return
+    if (!currencies.loaded || !settings.loaded) return
     if (sheet && currencies.codes.includes(sheet)) return
-    const last = remembered()
-    if (currencies.codes.includes(last)) sheet = last
-    else if (summary || loadError) sheet = summary?.currencies?.[0]?.currency ?? currencies.codes[0] ?? ''
+    const first = settings.defaultCurrency || remembered()
+    if (currencies.codes.includes(first)) sheet = first
+    else if (summary || loadError) {
+      const used = new Set((summary?.currencies ?? []).map((c) => c.currency))
+      sheet = currencies.codes.find((c) => used.has(c)) ?? currencies.codes[0] ?? ''
+    }
   })
 
   $effect(() => {
@@ -90,7 +102,10 @@
     }
   })
 
-  onMount(() => currencies.load())
+  onMount(() => {
+    currencies.load()
+    settings.load()
+  })
 
   function step(direction: number) {
     sheet = sheets[(sheets.indexOf(sheet) + direction + sheets.length) % sheets.length]
@@ -151,7 +166,7 @@
 
   {#if view === 'settings'}
     <Settings {period} onchange={() => (currencies.load(), version++)} />
-  {:else}
+  {:else if settings.loaded}
   <div class="modes" role="group" aria-label="Modo">
     {#each modes as m (m.id)}
       <button aria-pressed={mode === m.id} onclick={() => setMode(m.id)}>{m.label}</button>
@@ -165,14 +180,14 @@
         type="month"
         bind:value={period}
         max={mode === 'past' ? shift(live, -1) : undefined}
-        min={mode === 'plan' ? thisMonth : undefined}
+        min={mode === 'plan' ? shift(live, 1) : undefined}
         aria-label="Periodo"
       />
       <button aria-label="Mes siguiente" onclick={() => go(1)}>›</button>
     {/if}
     {#if periodPattern.test(period)}
       <p class="period-title">
-        Dinero de <strong>{monthName(period)}</strong>, se gasta en {monthName(shift(period, 1))}
+        Dinero de <strong>{monthName(period)}</strong>, se gasta en {monthName(shift(period, settings.spendOffset))}
       </p>
     {/if}
   </div>
@@ -181,7 +196,6 @@
       <input type="checkbox" bind:checked={includePlanned} />
       Incluir lo planeado (ver cómo cambia el Disponible)
     </label>
-    {#if includePlanned}<p class="muted notice">Las cifras incluyen lo planeado; desmarca para volver a lo que ya ocurrió.</p>{/if}
   {/if}
   {#if mode === 'past'}
     <p class="muted notice">Estás viendo un periodo pasado: lo que cambies aquí modifica ese mes.</p>
@@ -247,6 +261,7 @@
             <div>
               <dt>Disponible</dt>
               <dd class:negative={isNegative(c.available)}>{formatMoney(c.available, c.currency)}</dd>
+              <dd class="detail">Arrastrado + Ingresos − Gastado</dd>
             </div>
             {#if c.real !== undefined}
               <div>
@@ -261,7 +276,6 @@
               </div>
             {/if}
           </dl>
-          <p class="muted formula">Disponible = arrastrado + ingresos − gastado</p>
 
           {#if c.expenses?.length}
             <table>

@@ -97,10 +97,10 @@ type SummaryOutput struct {
 	Body Summary
 }
 
-func toSummary(s summary.Summary) Summary {
+func toSummary(s summary.Summary, offset int) Summary {
 	out := Summary{
 		Period:     s.Period.String(),
-		SpendMonth: s.Period.SpendMonth().String(),
+		SpendMonth: spendMonth(s.Period, offset),
 		Currencies: make([]CurrencySummary, 0, len(s.Currencies)),
 	}
 	for _, c := range s.Currencies {
@@ -198,7 +198,7 @@ func optional(m *money.Money) string {
 	return m.String()
 }
 
-func registerSummary(api huma.API, summaries SummaryService) {
+func registerSummary(api huma.API, summaries SummaryService, settings SettingsService) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-currency-summary",
 		Method:      http.MethodGet,
@@ -213,9 +213,13 @@ func registerSummary(api huma.API, summaries SummaryService) {
 		if err != nil {
 			return nil, toHTTPError(ctx, "get currency summary", err)
 		}
+		offset, err := settings.SpendOffset(ctx)
+		if err != nil {
+			return nil, toHTTPError(ctx, "get settings", err)
+		}
 		return &CurrencySummaryOutput{Body: PeriodCurrencySummary{
 			Period:          p.String(),
-			SpendMonth:      p.SpendMonth().String(),
+			SpendMonth:      spendMonth(p, offset),
 			CurrencySummary: toCurrencySummary(cs),
 		}}, nil
 	})
@@ -234,7 +238,11 @@ func registerSummary(api huma.API, summaries SummaryService) {
 		if err != nil {
 			return nil, toHTTPError(ctx, "get summary", err)
 		}
-		return &SummaryOutput{Body: toSummary(s)}, nil
+		offset, err := settings.SpendOffset(ctx)
+		if err != nil {
+			return nil, toHTTPError(ctx, "get settings", err)
+		}
+		return &SummaryOutput{Body: toSummary(s, offset)}, nil
 	})
 }
 

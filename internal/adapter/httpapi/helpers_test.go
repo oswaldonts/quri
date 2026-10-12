@@ -22,6 +22,7 @@ import (
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/settings"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
 )
 
@@ -85,6 +86,7 @@ func newTestRouterWithAuth(t *testing.T, authSvc AuthService) http.Handler {
 		Exchanges:  exchangeSvc,
 		Accounts:   accountSvc,
 		Currencies: currencySvc,
+		Settings:   settings.NewService(sqlite.NewSettingsRepository(db), currencySvc),
 	}, quiet)
 }
 

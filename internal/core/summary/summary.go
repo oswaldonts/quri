@@ -66,13 +66,13 @@ type CurrencySummary struct {
 	Committed     money.Money  // spent in committed categories (must be paid every month)
 	Discretionary money.Money  // spent in the other non-system categories
 	Exchanged     money.Money  // spent in the system exchange category
-	Spent         money.Money  // total spent
+	Spent         money.Money  // total spent, whatever account it was paid from
 	Budgeted      *money.Money // sum of the category budgets, if any
 
 	CarriedOver money.Money // brought from the previous period (see CarriedFrom)
 	CarriedFrom CarrySource // "" when nothing is carried
 
-	Available  money.Money  // carried over + income total − spent: what should be left
+	Available  money.Money  // carried over + income total − spent: what should be left (banks and cash)
 	Real       *money.Money // real balance, if registered
 	Difference *money.Money // available − real; 0 means every entry is registered
 }

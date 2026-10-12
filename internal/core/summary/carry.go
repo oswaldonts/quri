@@ -75,7 +75,7 @@ func (s *Service) movements(ctx context.Context, p period.Period, view View) ([]
 		return nil, nil, nil, fmt.Errorf("list balances: %w", err)
 	}
 	incomes, expenses = view.filter(incomes, expenses)
-	return incomes, withoutCash(expenses), balances, nil
+	return incomes, expenses, balances, nil
 }
 
 // nextCarries turns a period's available money and real balances into the carry of
@@ -113,16 +113,4 @@ func withoutZeros(c carries) carries {
 		}
 	}
 	return c
-}
-
-// withoutCash drops the expenses paid in cash: the available money is what is in the banks,
-// and the cash is tracked apart (see package account).
-func withoutCash(expenses []expense.Expense) []expense.Expense {
-	kept := make([]expense.Expense, 0, len(expenses))
-	for _, e := range expenses {
-		if !e.Cash {
-			kept = append(kept, e)
-		}
-	}
-	return kept
 }

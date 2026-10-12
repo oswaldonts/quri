@@ -40,13 +40,16 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func TestSpendMonth(t *testing.T) {
+func TestShift(t *testing.T) {
 	tests := []struct {
 		earned string
+		months int
 		spend  string
 	}{
-		{earned: "2026-07", spend: "2026-08"},
-		{earned: "2026-12", spend: "2027-01"},
+		{earned: "2026-07", months: 1, spend: "2026-08"},
+		{earned: "2026-12", months: 1, spend: "2027-01"},
+		{earned: "2026-07", months: 0, spend: "2026-07"},
+		{earned: "2026-01", months: -1, spend: "2025-12"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.earned, func(t *testing.T) {
@@ -54,8 +57,8 @@ func TestSpendMonth(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got := p.SpendMonth().String(); got != tt.spend {
-				t.Errorf("SpendMonth() = %s, want %s", got, tt.spend)
+			if got := p.Shift(tt.months).String(); got != tt.spend {
+				t.Errorf("Shift(%d) = %s, want %s", tt.months, got, tt.spend)
 			}
 		})
 	}
