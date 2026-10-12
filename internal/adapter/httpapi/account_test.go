@@ -90,12 +90,12 @@ func TestExpensesLowerTheBalanceOfTheirAccount(t *testing.T) {
 		return e
 	}
 	cashExpense := register(`{"category_id":"market","currency":"PEN","amount":"30.50","spent_on":"2026-08-03","account_id":"` + cash.ID + `"}`)
-	if !cashExpense.Cash || cashExpense.AccountID != cash.ID {
+	if cashExpense.AccountID != cash.ID {
 		t.Errorf("expense = %+v, want charged to the cash", cashExpense)
 	}
 	bankExpense := register(`{"category_id":"market","currency":"PEN","amount":"100","spent_on":"2026-08-04","account_id":"` + bcp.ID + `"}`)
-	if bankExpense.Cash {
-		t.Errorf("expense = %+v, a bank expense is not cash", bankExpense)
+	if bankExpense.AccountID != bcp.ID {
+		t.Errorf("expense = %+v, want charged to BCP", bankExpense)
 	}
 	register(`{"category_id":"market","currency":"PEN","amount":"7","spent_on":"2026-08-04"}`)
 	// A planned expense hasn't happened: it doesn't lower the balance.
@@ -112,11 +112,11 @@ func TestExpensesLowerTheBalanceOfTheirAccount(t *testing.T) {
 		t.Errorf("balances = %v, want Efectivo 169.50 and BCP 400.00", got)
 	}
 
-	// Cash expenses stay out of the summary; the bank ones and those without account count.
+	// Every expense counts as spent and lowers the available money, whichever account paid it.
 	var s Summary
 	decode(t, send(h, http.MethodGet, "/periods/2026-07/summary", ""), &s)
-	if len(s.Currencies) != 1 || s.Currencies[0].Spent != "107.00" {
-		t.Errorf("summary = %+v, want spent 107.00", s.Currencies)
+	if len(s.Currencies) != 1 || s.Currencies[0].Spent != "137.50" || s.Currencies[0].Available != "862.50" {
+		t.Errorf("summary = %+v, want spent 137.50, available 862.50", s.Currencies)
 	}
 
 	// Typing the balance again restarts the count.

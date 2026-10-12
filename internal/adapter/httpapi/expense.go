@@ -93,7 +93,6 @@ type Expense struct {
 	Status      string    `json:"status" enum:"planned,confirmed"`
 	SpentOn     string    `json:"spent_on" format:"date" example:"2026-08-03"`
 	AccountID   string    `json:"account_id,omitempty" doc:"Account the money came out of (see /accounts); its balance goes down by the amount."`
-	Cash        bool      `json:"cash" doc:"True when the account is the cash: the expense is left out of the period summary, whose available money is what is in the banks."`
 	ExchangeID  string    `json:"exchange_id,omitempty" doc:"Set when the expense is the source side of an exchange."`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -110,7 +109,6 @@ func toExpense(e expense.Expense) Expense {
 		Status:      string(e.Status),
 		SpentOn:     e.SpentOn.Format(time.DateOnly),
 		AccountID:   e.AccountID,
-		Cash:        e.Cash,
 		ExchangeID:  e.ExchangeID,
 		CreatedAt:   e.CreatedAt,
 	}

@@ -92,7 +92,6 @@ func insertExpense(ctx context.Context, q *sqlitedb.Queries, e expense.Expense) 
 		ExchangeID:  sql.NullString{String: e.ExchangeID, Valid: e.ExchangeID != ""},
 		CreatedAt:   formatTime(e.CreatedAt),
 		Status:      storedStatus(e.Status),
-		Cash:        boolToInt(e.Cash),
 		AccountID:   sql.NullString{String: e.AccountID, Valid: e.AccountID != ""},
 	}); err != nil {
 		return fmt.Errorf("insert expense: %w", err)
@@ -135,7 +134,6 @@ func toExpense(row sqlitedb.Expense) (expense.Expense, error) {
 		SpentOn:     spentOn,
 		ExchangeID:  row.ExchangeID.String, // "" when NULL
 		Status:      status.Status(row.Status),
-		Cash:        row.Cash == 1,
 		AccountID:   row.AccountID.String, // "" when NULL
 		CreatedAt:   createdAt,
 	}, nil
@@ -176,7 +174,6 @@ func (r *ExpenseRepository) Update(ctx context.Context, e expense.Expense) error
 		Description: e.Description,
 		SpentOn:     e.SpentOn.Format(time.DateOnly),
 		Status:      storedStatus(e.Status),
-		Cash:        boolToInt(e.Cash),
 		AccountID:   sql.NullString{String: e.AccountID, Valid: e.AccountID != ""},
 		ID:          e.ID,
 	})

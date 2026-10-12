@@ -421,16 +421,15 @@ func TestStatusAndFilter(t *testing.T) {
 
 func TestRegisterChargesAnAccount(t *testing.T) {
 	tests := []struct {
-		name     string
-		account  string
-		wantCash bool
-		wantErr  error
+		name    string
+		account string
+		wantErr error
 	}{
-		{"no account", "", false, nil},
-		{"bank", "bcp", false, nil},
-		{"cash", "cash", true, nil},
-		{"unknown", "nope", false, ErrInvalidInput},
-		{"other currency", "usd", false, ErrInvalidInput},
+		{"no account", "", nil},
+		{"bank", "bcp", nil},
+		{"cash", "cash", nil},
+		{"unknown", "nope", ErrInvalidInput},
+		{"other currency", "usd", ErrInvalidInput},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -442,8 +441,8 @@ func TestRegisterChargesAnAccount(t *testing.T) {
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}
-			if err == nil && (e.Cash != tt.wantCash || e.AccountID != tt.account) {
-				t.Errorf("expense = %+v, want account %q cash=%v", e, tt.account, tt.wantCash)
+			if err == nil && e.AccountID != tt.account {
+				t.Errorf("expense = %+v, want account %q", e, tt.account)
 			}
 		})
 	}

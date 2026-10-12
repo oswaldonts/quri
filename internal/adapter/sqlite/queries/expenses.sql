@@ -1,9 +1,9 @@
 -- name: InsertExpense :exec
-INSERT INTO expenses (id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, cash, account_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO expenses (id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListExpensesByPeriod :many
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, cash, account_id
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id
 FROM expenses
 WHERE period = ?
 ORDER BY spent_on, created_at;
@@ -26,7 +26,7 @@ WHERE expenses.period = ?
 ORDER BY expense_tags.expense_id, expense_tags.tag;
 
 -- name: GetExpense :one
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, cash, account_id
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id
 FROM expenses
 WHERE id = ?;
 
@@ -35,7 +35,7 @@ SELECT tag FROM expense_tags WHERE expense_id = ? ORDER BY tag;
 
 -- name: UpdateExpense :execrows
 UPDATE expenses
-SET category_id = ?, currency = ?, amount_minor = ?, description = ?, spent_on = ?, status = ?, cash = ?, account_id = ?
+SET category_id = ?, currency = ?, amount_minor = ?, description = ?, spent_on = ?, status = ?, account_id = ?
 WHERE id = ?;
 
 -- name: DeleteExpenseTags :exec

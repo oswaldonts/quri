@@ -2,7 +2,7 @@
   import { api, connectionError, failureMessage, type Schemas } from './api'
   import { formatMoney, isNegative, isZero, parseSigned, subtractAmounts, sumAmounts, type Currency } from './money'
 
-  // available is the period's Disponible: what should be sitting in the banks.
+  // available is the period's Disponible: the money that should be in the accounts and the cash.
   let { currency, available, refresh, onchange }: {
     currency: Currency
     available: string
@@ -15,8 +15,10 @@
   const cash = $derived(accounts.find((a) => a.kind === 'cash'))
   const banks = $derived(accounts.filter((a) => a.kind === 'bank'))
   const inBanks = $derived(sumAmounts(banks.map((b) => b.balance)))
-  // What the banks should hold but isn't assigned to any of them yet; 0 means every sol is placed.
-  const unassigned = $derived(subtractAmounts(available, inBanks))
+  // What is in the accounts: the banks and the cash. The Disponible minus that is money not placed
+  // in any of them yet; 0 means every sol is placed.
+  const placed = $derived(sumAmounts([inBanks, cash?.balance ?? '0.00']))
+  const unassigned = $derived(subtractAmounts(available, placed))
   let loadError = $state('')
 
   let adding = $state(false)
@@ -194,29 +196,29 @@
           </tr>
         {/each}
       </tbody>
-      {#if banks.length}
+      {#if accounts.length}
         <tfoot>
           <tr>
-            <td>En bancos</td>
-            <td class="num">{formatMoney(inBanks, currency)}</td>
+            <td>En cuentas{cash ? ' y efectivo' : ''}</td>
+            <td class="num">{formatMoney(placed, currency)}</td>
             <td></td>
           </tr>
           <tr>
-            <td>Sin asignar <span class="muted">(Disponible − bancos)</span></td>
+            <td>Sin asignar <span class="muted">(Disponible − cuentas)</span></td>
             <td class="num" class:negative={isNegative(unassigned)}>{formatMoney(unassigned, currency)}</td>
             <td></td>
           </tr>
         </tfoot>
       {/if}
     </table>
-    {#if banks.length && !isZero(unassigned)}
+    {#if accounts.length && !isZero(unassigned)}
       <p class="muted">
         {isNegative(unassigned)
-          ? 'Los bancos suman más que el Disponible.'
-          : 'Falta repartir esa plata entre tus bancos: los ingresos no suman solos, escribe el saldo nuevo.'}
+          ? 'Las cuentas suman más que el Disponible.'
+          : 'Falta repartir esa plata entre tus cuentas: los ingresos no suman solos, escribe el saldo nuevo.'}
       </p>
     {/if}
-    <p class="muted">Cada gasto descuenta de la cuenta que elijas al registrarlo. El efectivo no forma parte del Disponible.</p>
+    <p class="muted">Cada gasto descuenta de la cuenta que elijas al registrarlo. El efectivo es una cuenta más: sus gastos bajan el Disponible como los demás.</p>
   {:else}
     <p class="muted">Registra tu efectivo y tus cuentas de banco en {currency} para ver cuánto queda en cada una.</p>
   {/if}

@@ -103,7 +103,7 @@ func registerAccounts(api huma.API, accounts AccountService) {
 		Method:      http.MethodGet,
 		Path:        "/accounts",
 		Summary:     "List the cash and the bank accounts",
-		Description: "Cash first, then the banks by name, per currency. The cash balance already discounts the cash expenses.",
+		Description: "Cash first, then the banks by name, per currency. The balance of each account already discounts the expenses charged to it.",
 		Tags:        []string{tagAccounts},
 	}, func(ctx context.Context, _ *struct{}) (*AccountListOutput, error) {
 		as, err := accounts.List(ctx)

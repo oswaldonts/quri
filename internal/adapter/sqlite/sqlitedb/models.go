@@ -43,8 +43,9 @@ type Category struct {
 }
 
 type Currency struct {
-	Code   string
-	Symbol string
+	Code     string
+	Symbol   string
+	Position int64
 }
 
 type Exchange struct {
@@ -73,7 +74,6 @@ type Expense struct {
 	ExchangeID  sql.NullString
 	CreatedAt   string
 	Status      string
-	Cash        int64
 	AccountID   sql.NullString
 }
 
@@ -106,4 +106,10 @@ type Rate struct {
 	ToCurrency   string
 	RateScaled   int64
 	UpdatedAt    string
+}
+
+type Setting struct {
+	ID              int64
+	SpendOffset     int64
+	DefaultCurrency sql.NullString
 }

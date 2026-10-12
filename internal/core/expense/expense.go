@@ -49,9 +49,6 @@ type Expense struct {
 	Status      status.Status // planned or confirmed
 	// AccountID is the account the money came out of ("" when not tracked).
 	AccountID string
-	// Cash is true when that account is the cash: such expenses stay out of the period's
-	// summary, whose available money is what is in the banks.
-	Cash      bool
 	CreatedAt time.Time
 }
 
@@ -356,9 +353,8 @@ func (s *Service) checkCategory(ctx context.Context, e Expense) error {
 }
 
 // chargeAccount checks the expense's account (it must exist and use the expense's currency)
-// and derives Cash from its kind.
+
 func (s *Service) chargeAccount(ctx context.Context, e *Expense) error {
-	e.Cash = false
 	if e.AccountID == "" {
 		return nil
 	}
@@ -372,7 +368,6 @@ func (s *Service) chargeAccount(ctx context.Context, e *Expense) error {
 	if a.Amount.Currency() != e.Amount.Currency() {
 		return invalid(fmt.Errorf("account %s is in %s, the expense in %s", a.Name, a.Amount.Currency(), e.Amount.Currency()))
 	}
-	e.Cash = a.Kind == account.Cash
 	return nil
 }
 
