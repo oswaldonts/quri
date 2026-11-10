@@ -5,6 +5,8 @@ import { api, failureMessage, type Schemas } from './api'
 class AppSettings {
   spendOffset = $state(0)
   defaultCurrency = $state('')
+  // Last period the user closed ('' none): the work moves on to the next one before the calendar does.
+  closedThrough = $state('')
   loaded = $state(false)
 
   async load() {
@@ -20,6 +22,7 @@ class AppSettings {
   private apply(data: Schemas['Settings']) {
     this.spendOffset = data.spend_offset
     this.defaultCurrency = data.default_currency
+    this.closedThrough = data.closed_through
   }
 
   // Both return the error message to show, or '' when it was saved.
@@ -31,7 +34,11 @@ class AppSettings {
     return this.patch({ default_currency: code })
   }
 
-  private async patch(body: { spend_offset?: number; default_currency?: string }): Promise<string> {
+  async setClosedThrough(period: string): Promise<string> {
+    return this.patch({ closed_through: period })
+  }
+
+  private async patch(body: { spend_offset?: number; default_currency?: string; closed_through?: string }): Promise<string> {
     const { data, error, response } = await api.PATCH('/settings', { body })
     if (data) this.apply(data)
     return error ? failureMessage(response, error) : ''

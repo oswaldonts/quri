@@ -22,7 +22,11 @@
   //   plan:    this month and later, to plan what comes next
   type Mode = 'past' | 'current' | 'plan'
   const thisMonth = toPeriod(new Date())
-  const live = $derived(shift(thisMonth, -settings.spendOffset))
+  const calendarLive = $derived(shift(thisMonth, -settings.spendOffset))
+  // Closing a month moves on to the next one even if the calendar hasn't got there yet.
+  const live = $derived(
+    settings.closedThrough && shift(settings.closedThrough, 1) > calendarLive ? shift(settings.closedThrough, 1) : calendarLive,
+  )
   const modes: { id: Mode; label: string }[] = [
     { id: 'past', label: 'Pasado' },
     { id: 'current', label: 'Actual' },
@@ -43,13 +47,23 @@
   let period = $state(toPeriod(new Date()))
   const valid = $derived(periodPattern.test(period) && inMode[mode](period))
 
-  // Once the offset is known (and whenever it changes) the screen goes back to the live period.
-  let offsetSeen = $state<number | null>(null)
+  // Once the settings are known (and whenever the live period moves: offset, closing or reopening
+  // a month) the screen goes back to the live period.
+  let liveSeen = $state('')
   $effect(() => {
-    if (!settings.loaded || offsetSeen === settings.spendOffset) return
-    offsetSeen = settings.spendOffset
+    if (!settings.loaded || liveSeen === live) return
+    liveSeen = live
     period = startOf[mode]
   })
+
+  let closeError = $state('')
+  async function closeMonth() {
+    if (!confirm(`¿Cerrar ${monthName(live)}? Pasarás a trabajar con el dinero de ${monthName(shift(live, 1))}. Podrás reabrirlo.`)) return
+    closeError = await settings.setClosedThrough(live)
+  }
+  async function reopenMonth() {
+    closeError = await settings.setClosedThrough(shift(live, -2))
+  }
 
   function setMode(next: Mode) {
     mode = next
@@ -129,6 +143,24 @@
   const cashHere = $derived(mode === 'past' ? '0.00' : (cashBalances[sheet] ?? '0.00'))
   const withoutCash = (available: string) => subtractAmounts(available, cashHere)
 
+  // The eye hides every big amount, for when someone looks over your shoulder.
+  const hideKey = 'hide-amounts'
+  let hideAmounts = $state(false)
+  try {
+    hideAmounts = localStorage.getItem(hideKey) === '1'
+  } catch {
+    // storage unavailable: amounts stay visible
+  }
+  function toggleHide() {
+    hideAmounts = !hideAmounts
+    try {
+      localStorage.setItem(hideKey, hideAmounts ? '1' : '0')
+    } catch {
+      // not persisted
+    }
+  }
+  const money = (amount: string, currency: Currency) => (hideAmounts ? '••••••' : formatMoney(amount, currency))
+
   $effect(() => {
     void version
     const controller = new AbortController()
@@ -172,15 +204,15 @@
 
 <header class="bar">
   <h1>Income Manager</h1>
-  <button onclick={() => session.logout()}>Salir</button>
-</header>
-
-<main class="page">
   <div class="modes" role="group" aria-label="Vista">
     <button aria-pressed={view === 'movements'} onclick={() => (view = 'movements')}>Movimientos</button>
     <button aria-pressed={view === 'reports'} onclick={() => (view = 'reports')}>Reportes</button>
     <button aria-pressed={view === 'settings'} onclick={() => (view = 'settings')}>Ajustes</button>
   </div>
+  <button onclick={() => session.logout()}>Salir</button>
+</header>
+
+<main class="page">
 
   {#if view === 'settings'}
     <Settings {period} onchange={() => (currencies.load(), version++)} />
@@ -190,6 +222,16 @@
       <button aria-pressed={mode === m.id} onclick={() => setMode(m.id)}>{m.label}</button>
     {/each}
   </div>
+
+  {#if mode === 'current'}
+    <div class="sheets">
+      <button onclick={closeMonth}>Cerrar mes</button>
+      {#if live > calendarLive}
+        <button class="link neutral" onclick={reopenMonth}>Reabrir {monthName(shift(live, -1))}</button>
+      {/if}
+    </div>
+    {#if closeError}<p class="error" role="alert">{closeError}</p>{/if}
+  {/if}
 
   <div class="period">
     {#if mode !== 'current'}
@@ -252,50 +294,67 @@
   {:else if summary}
     <div class:stale={loading}>
       {#each (summary.currencies ?? []).filter((x) => x.currency === sheet) as c (c.currency)}
+        {@const avail = withoutCash(c.available)}
         <section class="currency">
-          <h2>{c.currency}</h2>
-          <dl class="figures">
-            <div>
-              <dt>Arrastrado</dt>
-              <dd>{formatMoney(c.carried_over, c.currency)}</dd>
-              {#if c.carried_from}
-                <dd class="detail">
-                  {c.carried_from === 'real' ? 'Saldo real' : 'Disponible'} de {shift(period, -1)}
-                </dd>
-              {/if}
-            </div>
-            <div>
-              <dt>Ingresos</dt>
-              <dd>{formatMoney(c.income.total, c.currency)}</dd>
-              <dd class="detail">
-                Sueldo {formatMoney(c.income.salary, c.currency)} · Extra {formatMoney(c.income.extra, c.currency)}
-                {#if !isZero(c.income.exchange)}· Cambios {formatMoney(c.income.exchange, c.currency)}{/if}
-              </dd>
-            </div>
-            <div>
-              <dt>Gastado</dt>
-              <dd>{formatMoney(c.spent, c.currency)}</dd>
-            </div>
-            <div>
-              <dt>Disponible</dt>
-              <dd class:negative={isNegative(withoutCash(c.available))}>{formatMoney(withoutCash(c.available), c.currency)}</dd>
-              {#if isZero(cashHere)}<dd class="detail">Arrastrado + Ingresos − Gastado</dd>{/if}
-            </div>
-            {#if c.real !== undefined}
-              <div>
-                <dt>Saldo real</dt>
-                <dd>{formatMoney(c.real, c.currency)}</dd>
+          <div class="hero">
+            <div class="tile">
+              <div class="label">
+                <span>Disponible en {c.currency}</span>
+                <button
+                  class="icon"
+                  aria-label={hideAmounts ? 'Mostrar montos' : 'Ocultar montos'}
+                  aria-pressed={hideAmounts}
+                  onclick={toggleHide}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                    {#if hideAmounts}<path d="M3 3l18 18" />{/if}
+                  </svg>
+                </button>
               </div>
-            {/if}
-            {#if c.difference !== undefined}
-              <div>
-                <dt>Diferencia</dt>
-                <dd class:negative={isNegative(c.difference)}>{formatMoney(c.difference, c.currency)}</dd>
+              <p class="big" class:negative={isNegative(avail)}>{money(avail, c.currency)}</p>
+              {#if isZero(cashHere)}<p class="detail">Arrastrado + Ingresos − Gastado</p>{/if}
+              <dl class="mini">
+                <div>
+                  <dt>Arrastrado</dt>
+                  <dd>{money(c.carried_over, c.currency)}</dd>
+                  {#if c.carried_from}
+                    <dd class="detail">{c.carried_from === 'real' ? 'Saldo real' : 'Disponible'} de {shift(period, -1)}</dd>
+                  {/if}
+                </div>
+                <div>
+                  <dt>Gastado</dt>
+                  <dd>{money(c.spent, c.currency)}</dd>
+                </div>
+                {#if c.real !== undefined}
+                  <div>
+                    <dt>Saldo real</dt>
+                    <dd>{money(c.real, c.currency)}</dd>
+                  </div>
+                {/if}
+                {#if c.difference !== undefined}
+                  <div>
+                    <dt>Diferencia</dt>
+                    <dd class:negative={isNegative(c.difference)}>{money(c.difference, c.currency)}</dd>
+                  </div>
+                {/if}
+              </dl>
+            </div>
+            <div class="tile lime">
+              <div class="label"><span>Ingresos</span></div>
+              <p class="big">{money(c.income.total, c.currency)}</p>
+              <div class="chips">
+                <span>Sueldo {money(c.income.salary, c.currency)}</span>
+                <span>Extra {money(c.income.extra, c.currency)}</span>
+                {#if !isZero(c.income.exchange)}<span>Cambios {money(c.income.exchange, c.currency)}</span>{/if}
               </div>
-            {/if}
-          </dl>
+            </div>
+          </div>
 
           {#if c.expenses?.length}
+            <section class="panel" aria-labelledby="categories-summary">
+            <h2 id="categories-summary">Gasto por categoría</h2>
             <table class="fixed">
               <colgroup><col class="c-date" /><col /><col class="c-amount" /><col class="c-half" /><col class="c-half" /></colgroup>
               <thead>
@@ -309,16 +368,25 @@
               <tbody>
                 {#each c.expenses as e (e.category_id)}
                   <tr>
-                    <td colspan="2">{e.name}</td>
-                    <td class="num">{formatMoney(e.spent, c.currency)}</td>
-                    <td class="num">{e.budget ? formatMoney(e.budget, c.currency) : '—'}</td>
+                    <td colspan="2">
+                      {e.name}
+                      {#if e.budget && Number(e.budget) > 0}
+                        {@const pct = Math.min(100, Math.round((Number(e.spent) / Number(e.budget)) * 100))}
+                        <span class="mini-bar" role="img" aria-label="{pct}% del presupuesto">
+                          <span class="bar-fill" class:over={Number(e.spent) > Number(e.budget)} style="width: {pct}%"></span>
+                        </span>
+                      {/if}
+                    </td>
+                    <td class="num">{money(e.spent, c.currency)}</td>
+                    <td class="num">{e.budget ? money(e.budget, c.currency) : '—'}</td>
                     <td class="num" class:negative={e.remaining !== undefined && isNegative(e.remaining)}>
-                      {e.remaining ? formatMoney(e.remaining, c.currency) : '—'}
+                      {e.remaining ? money(e.remaining, c.currency) : '—'}
                     </td>
                   </tr>
                 {/each}
               </tbody>
             </table>
+            </section>
           {/if}
         </section>
       {:else}

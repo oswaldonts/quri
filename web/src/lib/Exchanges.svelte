@@ -174,6 +174,20 @@
     formError = ''
   }
 
+  // A planned exchange that happened: its expense and its income start counting together.
+  async function confirmExchange(exchange: Schemas['Exchange']) {
+    try {
+      const { error, response } = await api.PATCH('/periods/{period}/exchanges/{id}', {
+        params: { path: { period, id: exchange.id } },
+        body: { status: 'confirmed' },
+      })
+      if (error) loadError = failureMessage(response, error)
+      else onchange()
+    } catch {
+      loadError = connectionError
+    }
+  }
+
   async function remove(exchange: Schemas['Exchange']) {
     const text = `${formatMoney(exchange.from.amount, exchange.from.currency)} → ${formatMoney(exchange.to.amount, exchange.to.currency)}`
     if (!confirm(`¿Eliminar el cambio ${text}? También se eliminan el gasto y el ingreso que generó.`)) return
@@ -302,11 +316,14 @@
             <td>{e.exchanged_on}</td>
             <td>
               1 {e.from.currency} = {e.rate} {e.to.currency}{e.description ? ` · ${e.description}` : ''}
-              {#if e.status === 'planned'}<span class="badge">Planeado</span>{/if}
+              {#if e.status === 'planned'}<span class="badge warn">Planeado</span>{/if}
             </td>
             <td class="num">{formatMoney(e.from.amount, e.from.currency)}</td>
             <td class="num">{formatMoney(e.to.amount, e.to.currency)}</td>
             <td class="num">
+              {#if e.status === 'planned'}
+                <button class="link neutral" aria-label="Confirmar cambio" onclick={() => confirmExchange(e)}>Confirmar</button>
+              {/if}
               <button class="link neutral" aria-label="Editar cambio" onclick={() => edit(e)}>Editar</button>
               <button class="link" aria-label="Eliminar cambio" onclick={() => remove(e)}>Eliminar</button>
             </td>

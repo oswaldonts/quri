@@ -224,11 +224,13 @@
             <td>
               {kindLabel[i.kind]}{i.description ? ` · ${i.description}` : ''}
               {#if i.category_id}<span class="muted"> → {categoryName(i.category_id)}</span>{/if}
-              {#if i.status === 'planned'}<span class="badge">Planeado</span>{/if}
+              {#if i.status === 'planned'}<span class="badge warn">Planeado</span>{/if}
             </td>
             <td class="num">{formatMoney(i.amount, i.currency)}</td>
             <td class="num">
-              {#if i.kind !== 'exchange'}
+              {#if i.kind === 'exchange'}
+                {#if i.status === 'planned'}<span class="muted">Se confirma en Cambios de moneda</span>{/if}
+              {:else}
                 {#if i.status === 'planned'}
                   <button class="link neutral" aria-label="Confirmar ingreso" onclick={() => confirmIncome(i)}>Confirmar</button>
                 {/if}

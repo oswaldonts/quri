@@ -462,6 +462,26 @@ export interface paths {
         patch: operations["update-expense"];
         trace?: never;
     };
+    "/periods/{period}/expenses/{id}/repeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make an expense recur
+         * @description Marks the expense as installment first_no (default 1) of occurrences and creates planned copies in the following periods, one per month, up to the last installment. Same category, amount, account and tags; the date moves one month at a time. An expense that already recurs (422) or one created by an exchange (409) can't be repeated.
+         */
+        post: operations["repeat-expense"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/periods/{period}/incomes": {
         parameters: {
             query?: never;
@@ -937,6 +957,18 @@ export interface components {
             id: string;
             /** @example 2026-07 */
             period: string;
+            /** @description Shared by the monthly occurrences of a recurring expense. */
+            series_id?: string;
+            /**
+             * Format: int64
+             * @description Position of this occurrence in its series, from 1.
+             */
+            series_no?: number;
+            /**
+             * Format: int64
+             * @description How many occurrences the series was created with.
+             */
+            series_total?: number;
             /**
              * Format: date
              * @example 2026-08-03
@@ -1193,6 +1225,16 @@ export interface components {
             /** @example Chocolate Milky */
             description?: string;
             /**
+             * Format: int64
+             * @description Installment this expense is, out of occurrences (default 1). With 9 of 12 only the 3 remaining ones are created.
+             */
+            first_no?: number;
+            /**
+             * Format: int64
+             * @description Total installments of a recurring expense (default 1: it happens once). The ones after this are planned expenses in the next periods, with the same amount; confirm each when it happens.
+             */
+            occurrences?: number;
+            /**
              * Format: date
              * @example 2026-08-03
              */
@@ -1254,6 +1296,20 @@ export interface components {
              */
             codes: string[] | null;
         };
+        RepeatExpenseInputBody: {
+            /**
+             * Format: int64
+             * @description Installment this expense is (default 1). The ones after it are created.
+             * @example 9
+             */
+            first_no?: number;
+            /**
+             * Format: int64
+             * @description Total installments of the series.
+             * @example 12
+             */
+            occurrences: number;
+        };
         SetBalanceInputBody: {
             /**
              * @description Real money in the currency (accounts plus cash). May be negative, e.g. a credit card debt.
@@ -1276,6 +1332,11 @@ export interface components {
             rate: string;
         };
         Settings: {
+            /**
+             * @description Last period the user closed (YYYY-MM); empty: none. The current period is the one after it when that is later than the calendar's.
+             * @example 2026-10
+             */
+            closed_through: string;
             /**
              * @description Currency the app opens in. Empty: the first one in the currency list.
              * @example USD
@@ -1399,6 +1460,8 @@ export interface components {
             status?: "planned" | "confirmed";
         };
         UpdateSettingsInputBody: {
+            /** @description Closes the month: the period just finished (YYYY-MM). Empty reopens. */
+            closed_through?: string;
             /** @description A registered currency; empty clears it. */
             default_currency?: string;
             /** Format: int64 */
@@ -2961,7 +3024,10 @@ export interface operations {
     };
     "delete-expense": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Also delete the occurrences of the same recurring expense in later periods. */
+                following?: boolean;
+            };
             header?: never;
             path: {
                 /** @description Month the money was earned (YYYY-MM). */
@@ -3031,6 +3097,70 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateExpenseInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Expense"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "repeat-expense": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Month the money was earned (YYYY-MM). */
+                period: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepeatExpenseInputBody"];
             };
         };
         responses: {

@@ -33,6 +33,12 @@
   let formError = $state('')
   let busy = $state(false)
   let editingId = $state('')
+  // Installment this expense is, out of how many; only for expenses that don't repeat yet.
+  let occurrences = $state('1')
+  let firstNo = $state('1')
+  let editingSeries = $state(false)
+  let seriesWas = $state({ no: 1, total: 1 })
+  const changedSeries = (no: number, total: number) => no !== seriesWas.no || total !== seriesWas.total
   let formEl = $state<HTMLFormElement>()
 
   $effect(() => {
@@ -100,6 +106,16 @@
       formError = 'Monto inválido: usa números con hasta 2 decimales.'
       return
     }
+    const months = Number(occurrences)
+    const first = Number(firstNo)
+    if (!Number.isInteger(months) || months < 1 || months > 60) {
+      formError = 'Total de cuotas: entre 1 y 60.'
+      return
+    }
+    if (!Number.isInteger(first) || first < 1 || first > months) {
+      formError = 'La cuota actual va entre 1 y el total de cuotas.'
+      return
+    }
     busy = true
     try {
       const fields = {
@@ -119,16 +135,32 @@
             params: { path: { period, id: editingId } },
             body: fields,
           })
-        : await api.POST('/periods/{period}/expenses', { params: { path: { period } }, body: { ...fields, currency } })
+        : await api.POST('/periods/{period}/expenses', {
+            params: { path: { period } },
+            body: { ...fields, currency, occurrences: months, first_no: first },
+          })
       if (error) {
         formError = failureMessage(response, error)
         return
+      }
+      if (editingId && (editingSeries ? changedSeries(first, months) : months > 1)) {
+        const repeated = await api.POST('/periods/{period}/expenses/{id}/repeat', {
+          params: { path: { period, id: editingId } },
+          body: { occurrences: months, first_no: first },
+        })
+        if (repeated.error) {
+          formError = `Los cambios se guardaron, pero no se pudo repetir: ${failureMessage(repeated.response, repeated.error)}`
+          onchange()
+          return
+        }
       }
       remember(accountId)
       if (editingId) cancel()
       amount = ''
       description = ''
       tags = ''
+      occurrences = '1'
+      firstNo = '1'
       onchange()
     } catch {
       formError = connectionError
@@ -146,6 +178,10 @@
     tags = (expense.tags ?? []).join(', ')
     planned = expense.status === 'planned'
     accountId = expense.account_id ?? ''
+    editingSeries = !!expense.series_id
+    seriesWas = { no: expense.series_no ?? 1, total: expense.series_total ?? 1 }
+    firstNo = String(seriesWas.no)
+    occurrences = String(seriesWas.total)
     formError = ''
     open = true
     await tick()
@@ -154,6 +190,9 @@
 
   function cancel() {
     editingId = ''
+    editingSeries = false
+    occurrences = '1'
+    firstNo = '1'
     open = false
     amount = ''
     description = ''
@@ -193,9 +232,14 @@
 
   async function remove(expense: Schemas['Expense']) {
     if (!confirm(`¿Eliminar el gasto de ${formatMoney(expense.amount, expense.currency)}?`)) return
+    // A recurring expense can go away alone or together with its later installments.
+    const following =
+      !!expense.series_id &&
+      (expense.series_no ?? 0) < (expense.series_total ?? 0) &&
+      confirm('Este gasto se repite. Aceptar: eliminar también las cuotas de los meses siguientes. Cancelar: solo esta.')
     try {
       const { error, response } = await api.DELETE('/periods/{period}/expenses/{id}', {
-        params: { path: { period, id: expense.id } },
+        params: { path: { period, id: expense.id }, query: { following } },
       })
       if (error) loadError = failureMessage(response, error)
       else onchange()
@@ -226,14 +270,17 @@
     <td>{e.spent_on}</td>
     <td>
       {e.description || fallback}
+      {#if e.series_id}<span class="badge lime">Cuota {e.series_no}/{e.series_total}</span>{/if}
       {#each e.tags as tag (tag)}<span class="badge">#{tag}</span>{/each}
       {#if e.account_id}<span class="badge">{accountName(e.account_id)}</span>{/if}
-      {#if e.status === 'planned'}<span class="badge">Planeado</span>{/if}
+      {#if e.status === 'planned'}<span class="badge warn">Planeado</span>{/if}
       {#if e.disabled}<span class="badge">Desactivado</span>{/if}
     </td>
     <td class="num"><span class="amount">{formatMoney(e.amount, e.currency)}</span></td>
     <td class="num">
-      {#if !e.exchange_id}
+      {#if e.exchange_id}
+        {#if e.status === 'planned'}<span class="muted">Se confirma en Cambios de moneda</span>{/if}
+      {:else}
         {#if e.status === 'planned'}
           <button class="link neutral" aria-label="Confirmar gasto" onclick={() => confirmExpense(e)}>Confirmar</button>
         {/if}
@@ -277,7 +324,7 @@
           <input bind:value={amount} inputmode="decimal" placeholder="0.00" required />
         </label>
         <label>
-          Fecha
+          {Number(occurrences) > 1 || editingSeries ? 'Fecha de cobro' : 'Fecha'}
           <input type="date" bind:value={spentOn} required />
         </label>
       </div>
@@ -294,6 +341,22 @@
           <input bind:value={tags} placeholder="dulces, lácteos" />
         </label>
       </div>
+      <div class="row wide">
+        <label>
+          Cuota actual
+          <input type="number" min="1" max={Number(occurrences) || 60} step="1" bind:value={firstNo} />
+        </label>
+        <label>
+          Total de cuotas (1: no se repite)
+          <input type="number" min="1" max="60" step="1" bind:value={occurrences} />
+        </label>
+      </div>
+      {#if Number(occurrences) > Number(firstNo)}
+        <p class="muted wide">
+          {#if editingSeries && changedSeries(Number(firstNo), Number(occurrences))}Las cuotas siguientes se reemplazan por las nuevas. {/if}Cuota {Number(firstNo)} de {Number(occurrences)}: se crean {Number(occurrences) - Number(firstNo)} gastos planeados
+          en los periodos siguientes, con el mismo monto y el mismo día de cobro. Confírmalos cuando ocurran.
+        </p>
+      {/if}
       {#if accountId && choosableAccounts.find((a) => a.id === accountId)?.kind === 'cash'}
         <p class="muted wide">Baja el saldo del efectivo, como cualquier gasto baja la cuenta de donde sale.</p>
       {/if}
