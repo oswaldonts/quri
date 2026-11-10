@@ -67,6 +67,21 @@ func (f *fakeRepo) ListByPeriod(_ context.Context, p period.Period) ([]Expense, 
 	return out, nil
 }
 
+func (f *fakeRepo) StartSeries(_ context.Context, first Expense, following []Expense) error {
+	if err := f.Update(context.Background(), first); err != nil {
+		return err
+	}
+	f.saved = append(f.saved, following...)
+	return nil
+}
+
+func (f *fakeRepo) DeleteSeriesFrom(_ context.Context, seriesID string, from period.Period) error {
+	f.saved = slices.DeleteFunc(f.saved, func(e Expense) bool {
+		return e.SeriesID == seriesID && e.Period.Compare(from) >= 0
+	})
+	return nil
+}
+
 // fakeCategories knows which categories each period uses.
 type fakeCategories struct{ inPeriod map[string]category.Category }
 
@@ -456,4 +471,110 @@ func (anyCurrency) Require(_ context.Context, c money.Currency) error {
 		return ErrInvalidInput // stands for a currency that was never registered
 	}
 	return nil
+}
+
+func TestRegisterRecurring(t *testing.T) {
+	repo := &fakeRepo{}
+	in := validInput()
+	in.Period, in.SpentOn, in.Occurrences, in.Tags = "2026-01", "2026-01-31", 3, []string{"seguro"}
+	first, err := newTestService(repo).Register(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if len(repo.saved) != 3 {
+		t.Fatalf("saved %d expenses, want 3", len(repo.saved))
+	}
+	wantPeriod := []string{"2026-01", "2026-02", "2026-03"}
+	wantDate := []string{"2026-01-31", "2026-02-28", "2026-03-31"}
+	for i, e := range repo.saved {
+		if e.Period.String() != wantPeriod[i] || e.SpentOn.Format(time.DateOnly) != wantDate[i] ||
+			e.SeriesID != first.SeriesID || e.SeriesNo != i+1 || e.SeriesTotal != 3 ||
+			e.Amount.String() != "45.50" || !slices.Equal(e.Tags, []string{"seguro"}) {
+			t.Errorf("occurrence %d = %+v", i+1, e)
+		}
+		if i > 0 && e.Status != status.Planned {
+			t.Errorf("occurrence %d status = %s, want planned", i+1, e.Status)
+		}
+	}
+	if first.SeriesID == "" || first.Status != status.Confirmed {
+		t.Errorf("first = %+v", first)
+	}
+}
+
+func TestRegisterOccurrencesOutOfRange(t *testing.T) {
+	for _, n := range []int{-1, MaxOccurrences + 1} {
+		in := validInput()
+		in.Occurrences = n
+		repo := &fakeRepo{}
+		if _, err := newTestService(repo).Register(context.Background(), in); !errors.Is(err, ErrInvalidInput) || len(repo.saved) != 0 {
+			t.Errorf("Occurrences %d: err = %v, saved %d", n, err, len(repo.saved))
+		}
+	}
+}
+
+func TestRepeatAndDeleteFollowing(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeRepo{}
+	svc := newTestService(repo)
+	e, err := svc.Register(ctx, validInput())
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if _, err := svc.Repeat(ctx, "2026-07", e.ID, 1, 1); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("Repeat 1 time: err = %v, want ErrInvalidInput", err)
+	}
+	first, err := svc.Repeat(ctx, "2026-07", e.ID, 1, 4)
+	if err != nil {
+		t.Fatalf("Repeat: %v", err)
+	}
+	if len(repo.saved) != 4 || first.SeriesNo != 1 || first.SeriesTotal != 4 || repo.saved[0].SeriesID != first.SeriesID {
+		t.Fatalf("after Repeat: %d saved, first = %+v", len(repo.saved), first)
+	}
+	// Repeating again replaces the later installments.
+	again, err := svc.Repeat(ctx, "2026-07", e.ID, 2, 3)
+	if err != nil || again.SeriesNo != 2 || again.SeriesID == first.SeriesID || len(repo.saved) != 2 || repo.saved[1].SeriesNo != 3 {
+		t.Fatalf("Repeat again = %+v, %v, %d saved", again, err, len(repo.saved))
+	}
+	if _, err := svc.Repeat(ctx, "2026-07", e.ID, 1, 4); err != nil {
+		t.Fatalf("Repeat 1 of 4: %v", err)
+	}
+	if _, err := svc.Repeat(ctx, "2026-07", e.ID, 1, 1); err != nil || len(repo.saved) != 1 || repo.saved[0].SeriesID != "" {
+		t.Fatalf("Repeat 1 of 1: err = %v, saved %+v, want a plain expense", err, repo.saved)
+	}
+	if first, err = svc.Repeat(ctx, "2026-07", e.ID, 1, 4); err != nil {
+		t.Fatalf("Repeat 1 of 4 again: %v", err)
+	}
+
+	// Editing one installment keeps it in the series.
+	updated, err := svc.Update(ctx, "2026-08", repo.saved[1].ID, UpdateInput{Amount: new("50")})
+	if err != nil || updated.SeriesID != first.SeriesID || updated.SeriesNo != 2 {
+		t.Errorf("Update = %+v, %v", updated, err)
+	}
+
+	if err := svc.DeleteFollowing(ctx, "2026-08", repo.saved[1].ID); err != nil {
+		t.Fatalf("DeleteFollowing: %v", err)
+	}
+	if len(repo.saved) != 1 || repo.saved[0].ID != e.ID {
+		t.Errorf("left %+v, want only the first occurrence", repo.saved)
+	}
+}
+
+func TestRepeatFromMiddleInstallment(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeRepo{}
+	svc := newTestService(repo)
+	e, _ := svc.Register(ctx, validInput())
+	if _, err := svc.Repeat(ctx, "2026-07", e.ID, 13, 12); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("installment 13 of 12: err = %v, want ErrInvalidInput", err)
+	}
+	first, err := svc.Repeat(ctx, "2026-07", e.ID, 9, 12)
+	if err != nil {
+		t.Fatalf("Repeat: %v", err)
+	}
+	if first.SeriesNo != 9 || len(repo.saved) != 4 {
+		t.Fatalf("first = %+v, %d saved, want installment 9 and 3 more", first, len(repo.saved))
+	}
+	if last := repo.saved[3]; last.SeriesNo != 12 || last.SeriesTotal != 12 || last.Period.String() != "2026-10" {
+		t.Errorf("last = %+v", last)
+	}
 }

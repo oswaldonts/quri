@@ -1,9 +1,9 @@
 -- name: InsertExpense :exec
-INSERT INTO expenses (id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO expenses (id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, series_id, series_no, series_total)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListExpensesByPeriod :many
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled, series_id, series_no, series_total
 FROM expenses
 WHERE period = ?
 ORDER BY spent_on, created_at;
@@ -26,7 +26,7 @@ WHERE expenses.period = ?
 ORDER BY expense_tags.expense_id, expense_tags.tag;
 
 -- name: GetExpense :one
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled, series_id, series_no, series_total
 FROM expenses
 WHERE id = ?;
 
@@ -53,3 +53,10 @@ DELETE FROM expenses WHERE exchange_id = ?;
 UPDATE expenses
 SET amount_minor = ?, description = ?, spent_on = ?, status = ?
 WHERE exchange_id = ?;
+
+-- name: SetExpenseSeries :execrows
+UPDATE expenses SET series_id = ?, series_no = ?, series_total = ? WHERE id = ?;
+
+-- Tags go away through ON DELETE CASCADE.
+-- name: DeleteSeriesFrom :execrows
+DELETE FROM expenses WHERE series_id = ? AND period >= ?;

@@ -93,6 +93,9 @@ func insertExpense(ctx context.Context, q *sqlitedb.Queries, e expense.Expense) 
 		CreatedAt:   formatTime(e.CreatedAt),
 		Status:      storedStatus(e.Status),
 		AccountID:   sql.NullString{String: e.AccountID, Valid: e.AccountID != ""},
+		SeriesID:    sql.NullString{String: e.SeriesID, Valid: e.SeriesID != ""},
+		SeriesNo:    sql.NullInt64{Int64: int64(e.SeriesNo), Valid: e.SeriesID != ""},
+		SeriesTotal: sql.NullInt64{Int64: int64(e.SeriesTotal), Valid: e.SeriesID != ""},
 	}); err != nil {
 		return fmt.Errorf("insert expense: %w", err)
 	}
@@ -136,6 +139,9 @@ func toExpense(row sqlitedb.Expense) (expense.Expense, error) {
 		Status:      status.Status(row.Status),
 		AccountID:   row.AccountID.String, // "" when NULL
 		Disabled:    row.Disabled != 0,
+		SeriesID:    row.SeriesID.String, // "" when NULL
+		SeriesNo:    int(row.SeriesNo.Int64),
+		SeriesTotal: int(row.SeriesTotal.Int64),
 		CreatedAt:   createdAt,
 	}, nil
 }
@@ -197,4 +203,39 @@ func (r *ExpenseRepository) Update(ctx context.Context, e expense.Expense) error
 func (r *ExpenseRepository) Delete(ctx context.Context, id string) error {
 	n, err := r.q.DeleteExpense(ctx, id)
 	return notFoundIfNone(n, err, expense.ErrNotFound, id)
+}
+
+// StartSeries stores first's series fields (none clears them) and inserts the following occurrences, atomically.
+func (r *ExpenseRepository) StartSeries(ctx context.Context, first expense.Expense, following []expense.Expense) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := r.q.WithTx(tx)
+	n, err := q.SetExpenseSeries(ctx, sqlitedb.SetExpenseSeriesParams{
+		SeriesID:    sql.NullString{String: first.SeriesID, Valid: first.SeriesID != ""},
+		SeriesNo:    sql.NullInt64{Int64: int64(first.SeriesNo), Valid: first.SeriesID != ""},
+		SeriesTotal: sql.NullInt64{Int64: int64(first.SeriesTotal), Valid: first.SeriesID != ""},
+		ID:          first.ID,
+	})
+	if err := notFoundIfNone(n, err, expense.ErrNotFound, first.ID); err != nil {
+		return err
+	}
+	for _, e := range following {
+		if err := insertExpense(ctx, q, e); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// DeleteSeriesFrom removes the occurrences of the series from the period on.
+func (r *ExpenseRepository) DeleteSeriesFrom(ctx context.Context, seriesID string, from period.Period) error {
+	_, err := r.q.DeleteSeriesFrom(ctx, sqlitedb.DeleteSeriesFromParams{
+		SeriesID: sql.NullString{String: seriesID, Valid: true},
+		Period:   from.String(),
+	})
+	return err
 }

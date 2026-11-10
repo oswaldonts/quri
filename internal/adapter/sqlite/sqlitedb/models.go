@@ -76,6 +76,9 @@ type Expense struct {
 	Status      string
 	AccountID   sql.NullString
 	Disabled    int64
+	SeriesID    sql.NullString
+	SeriesNo    sql.NullInt64
+	SeriesTotal sql.NullInt64
 }
 
 type ExpenseTag struct {
@@ -113,4 +116,5 @@ type Setting struct {
 	ID              int64
 	SpendOffset     int64
 	DefaultCurrency sql.NullString
+	ClosedThrough   sql.NullString
 }

@@ -50,8 +50,12 @@ type Expense struct {
 	// AccountID is the account the money came out of ("" when not tracked).
 	AccountID string
 	// Disabled keeps the expense registered but out of every sum: summary and account balance.
-	Disabled  bool
-	CreatedAt time.Time
+	Disabled bool
+	// SeriesID links the monthly occurrences of a recurring expense ("" when it happens once).
+	// SeriesNo is this occurrence's position (1-based) out of SeriesTotal.
+	SeriesID              string
+	SeriesNo, SeriesTotal int
+	CreatedAt             time.Time
 }
 
 // Repository is the port the service needs to persist expenses.
@@ -67,6 +71,11 @@ type Repository interface {
 	Delete(ctx context.Context, id string) error
 	// ListByPeriod returns the expenses of the period ordered by date.
 	ListByPeriod(ctx context.Context, p period.Period) ([]Expense, error)
+	// StartSeries stores first's series fields (none clears them) and inserts the
+	// following occurrences, in one transaction; ErrNotFound if first doesn't exist.
+	StartSeries(ctx context.Context, first Expense, following []Expense) error
+	// DeleteSeriesFrom removes the occurrences of the series from the period on.
+	DeleteSeriesFrom(ctx context.Context, seriesID string, from period.Period) error
 }
 
 // CategoryResolver checks that a category can be used in a period.
@@ -106,9 +115,19 @@ type RegisterInput struct {
 	SpentOn     string   // YYYY-MM-DD
 	Status      string   // "planned" or "confirmed" (default)
 	AccountID   string   // optional account the money comes out of; same currency
+	// Occurrences is how many consecutive months the expense appears (0 or 1: only this one).
+	// The following ones are planned expenses in the next periods, same amount and category.
+	Occurrences int
+	// FirstNo is the installment this expense is within the Occurrences (0 or 1: the first). An
+	// expense that is already installment 9 of 12 only creates the 3 remaining ones.
+	FirstNo int
 }
 
-// Register validates the input and stores a new expense.
+// MaxOccurrences bounds how many months a recurring expense can span.
+const MaxOccurrences = 60
+
+// Register validates the input and stores a new expense, plus its following occurrences
+// when it recurs.
 func (s *Service) Register(ctx context.Context, in RegisterInput) (Expense, error) {
 	e, err := s.parse(in)
 	if err != nil {
@@ -123,10 +142,110 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Expense, erro
 	if err := s.chargeAccount(ctx, &e); err != nil {
 		return Expense{}, err
 	}
-	if err := s.repo.Save(ctx, e); err != nil {
-		return Expense{}, fmt.Errorf("save expense: %w", err)
+	if in.Occurrences < 0 || in.FirstNo < 0 {
+		return Expense{}, invalid(errors.New("occurrences and first_no can't be negative"))
+	}
+	total, firstNo := max(in.Occurrences, 1), max(in.FirstNo, 1)
+	if err := checkInstallments(firstNo, total); err != nil {
+		return Expense{}, err
+	}
+	if total == 1 {
+		if err := s.repo.Save(ctx, e); err != nil {
+			return Expense{}, fmt.Errorf("save expense: %w", err)
+		}
+		return e, nil
+	}
+	following, err := s.startSeries(ctx, &e, firstNo, total)
+	if err != nil {
+		return Expense{}, err
+	}
+	if err := s.repo.SaveAll(ctx, append([]Expense{e}, following...)); err != nil {
+		return Expense{}, fmt.Errorf("save expenses: %w", err)
 	}
 	return e, nil
+}
+
+func checkInstallments(no, total int) error {
+	if total < 1 || total > MaxOccurrences || no < 1 || no > total {
+		return invalid(fmt.Errorf("installment %d of %d: want 1 <= installment <= total <= %d", no, total, MaxOccurrences))
+	}
+	return nil
+}
+
+// startSeries makes first installment no of total and returns the ones after it, planned in the
+// following periods on the same day of the month (the last day when the month is shorter).
+func (s *Service) startSeries(ctx context.Context, first *Expense, no, total int) ([]Expense, error) {
+	first.SeriesID, first.SeriesNo, first.SeriesTotal = s.newID(), no, total
+	following := make([]Expense, 0, total-no)
+	for i := 1; i <= total-no; i++ {
+		next := *first
+		next.ID = s.newID()
+		next.Period = first.Period.Shift(i)
+		next.SpentOn = addMonths(first.SpentOn, i)
+		next.Status = status.Planned
+		next.Disabled = false
+		next.SeriesNo = no + i
+		next.Tags = slices.Clone(first.Tags)
+		if err := s.checkCategory(ctx, next); err != nil {
+			return nil, fmt.Errorf("installment %d: %w", no+i, err)
+		}
+		following = append(following, next)
+	}
+	return following, nil
+}
+
+// addMonths moves a date n months ahead, keeping the day or the last day of a shorter month.
+func addMonths(d time.Time, n int) time.Time {
+	first := time.Date(d.Year(), d.Month()+time.Month(n), 1, 0, 0, 0, 0, time.UTC)
+	lastDay := first.AddDate(0, 1, -1).Day()
+	return time.Date(first.Year(), first.Month(), min(d.Day(), lastDay), 0, 0, 0, 0, time.UTC)
+}
+
+// Repeat sets an expense as installment firstNo of total, creating the ones after it. An expense
+// that already repeats is reset: its later installments are replaced by the new ones, and a
+// total of 1 makes it a plain expense again.
+func (s *Service) Repeat(ctx context.Context, periodStr, id string, firstNo, total int) (Expense, error) {
+	first, err := s.editable(ctx, periodStr, id)
+	if err != nil {
+		return Expense{}, err
+	}
+	if err := checkInstallments(firstNo, total); err != nil {
+		return Expense{}, err
+	}
+	oldSeries := first.SeriesID
+	var following []Expense
+	switch {
+	case total > 1:
+		if following, err = s.startSeries(ctx, &first, firstNo, total); err != nil {
+			return Expense{}, err
+		}
+	case oldSeries != "":
+		first.SeriesID, first.SeriesNo, first.SeriesTotal = "", 0, 0
+	default:
+		return Expense{}, invalid(errors.New("a recurring expense has at least 2 installments"))
+	}
+	if oldSeries != "" {
+		if err := s.repo.DeleteSeriesFrom(ctx, oldSeries, first.Period.Next()); err != nil {
+			return Expense{}, fmt.Errorf("replace series: %w", err)
+		}
+	}
+	if err := s.repo.StartSeries(ctx, first, following); err != nil {
+		return Expense{}, fmt.Errorf("start series: %w", err)
+	}
+	return first, nil
+}
+
+// DeleteFollowing removes the expense and the occurrences of its series in later periods.
+// An expense that doesn't repeat is deleted alone.
+func (s *Service) DeleteFollowing(ctx context.Context, periodStr, id string) error {
+	e, err := s.editable(ctx, periodStr, id)
+	if err != nil {
+		return err
+	}
+	if e.SeriesID == "" {
+		return s.repo.Delete(ctx, id)
+	}
+	return s.repo.DeleteSeriesFrom(ctx, e.SeriesID, e.Period)
 }
 
 // UpdateInput is a partial update: nil fields keep their value. Tags, when set,
@@ -182,6 +301,7 @@ func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInp
 	}
 	updated.ID, updated.CreatedAt = current.ID, current.CreatedAt
 	updated.Disabled = current.Disabled
+	updated.SeriesID, updated.SeriesNo, updated.SeriesTotal = current.SeriesID, current.SeriesNo, current.SeriesTotal
 	apply(&updated.Disabled, in.Disabled)
 	if err := s.repo.Update(ctx, updated); err != nil {
 		return Expense{}, fmt.Errorf("update expense: %w", err)

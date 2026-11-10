@@ -203,3 +203,55 @@ func TestDisabledExpenseStopsCounting(t *testing.T) {
 	decode(t, send(h, http.MethodPatch, "/periods/2026-07/expenses/"+e.ID, `{"disabled":false}`), &e)
 	check("enabled again", "80.00", "420.00")
 }
+
+func TestRecurringExpense(t *testing.T) {
+	h := newTestRouter(t)
+	var first Expense
+	decode(t, send(h, http.MethodPost, "/periods/2026-07/expenses",
+		`{"category_id":"market","currency":"PEN","amount":"90","description":"Seguro","spent_on":"2026-07-10","occurrences":3}`), &first)
+	if first.SeriesID == "" || first.SeriesNo != 1 || first.SeriesTotal != 3 {
+		t.Fatalf("first = %+v", first)
+	}
+
+	list := func(p string) []Expense {
+		var es []Expense
+		decode(t, send(h, http.MethodGet, "/periods/"+p+"/expenses", ""), &es)
+		return es
+	}
+	next := list("2026-09")
+	if len(next) != 1 || next[0].SeriesNo != 3 || next[0].Status != "planned" || next[0].SpentOn != "2026-09-10" {
+		t.Fatalf("2026-09 = %+v", next)
+	}
+	if got := list("2026-10"); len(got) != 0 {
+		t.Errorf("2026-10 = %+v, want none", got)
+	}
+
+	rec := send(h, http.MethodPost, "/periods/2026-07/expenses/"+first.ID+"/repeat", `{"occurrences":5}`)
+	assertProblem(t, rec, http.StatusUnprocessableEntity)
+
+	var single Expense
+	decode(t, send(h, http.MethodPost, "/periods/2026-07/expenses",
+		`{"category_id":"market","currency":"PEN","amount":"30","spent_on":"2026-07-12"}`), &single)
+	rec = send(h, http.MethodPost, "/periods/2026-07/expenses/"+single.ID+"/repeat", `{"occurrences":2,"first_no":1}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("repeat status = %d (body: %s)", rec.Code, rec.Body)
+	}
+	decode(t, rec, &single)
+	if single.SeriesNo != 1 || single.SeriesTotal != 2 || len(list("2026-08")) != 2 {
+		t.Errorf("after repeat: %+v, 2026-08 has %d", single, len(list("2026-08")))
+	}
+
+	august := list("2026-08")
+	var seriesAug Expense
+	for _, e := range august {
+		if e.SeriesID == first.SeriesID {
+			seriesAug = e
+		}
+	}
+	if rec := send(h, http.MethodDelete, "/periods/2026-08/expenses/"+seriesAug.ID+"?following=true", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete following status = %d", rec.Code)
+	}
+	if len(list("2026-07")) != 2 || len(list("2026-08")) != 1 || len(list("2026-09")) != 0 {
+		t.Errorf("after delete following: %d / %d / %d", len(list("2026-07")), len(list("2026-08")), len(list("2026-09")))
+	}
+}

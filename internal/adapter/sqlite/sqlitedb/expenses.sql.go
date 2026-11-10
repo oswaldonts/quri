@@ -61,8 +61,26 @@ func (q *Queries) DeleteExpenseTags(ctx context.Context, expenseID string) error
 	return err
 }
 
+const deleteSeriesFrom = `-- name: DeleteSeriesFrom :execrows
+DELETE FROM expenses WHERE series_id = ? AND period >= ?
+`
+
+type DeleteSeriesFromParams struct {
+	SeriesID sql.NullString
+	Period   string
+}
+
+// Tags go away through ON DELETE CASCADE.
+func (q *Queries) DeleteSeriesFrom(ctx context.Context, arg DeleteSeriesFromParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteSeriesFrom, arg.SeriesID, arg.Period)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getExpense = `-- name: GetExpense :one
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled, series_id, series_no, series_total
 FROM expenses
 WHERE id = ?
 `
@@ -83,13 +101,16 @@ func (q *Queries) GetExpense(ctx context.Context, id string) (Expense, error) {
 		&i.Status,
 		&i.AccountID,
 		&i.Disabled,
+		&i.SeriesID,
+		&i.SeriesNo,
+		&i.SeriesTotal,
 	)
 	return i, err
 }
 
 const insertExpense = `-- name: InsertExpense :exec
-INSERT INTO expenses (id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO expenses (id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, series_id, series_no, series_total)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertExpenseParams struct {
@@ -104,6 +125,9 @@ type InsertExpenseParams struct {
 	CreatedAt   string
 	Status      string
 	AccountID   sql.NullString
+	SeriesID    sql.NullString
+	SeriesNo    sql.NullInt64
+	SeriesTotal sql.NullInt64
 }
 
 func (q *Queries) InsertExpense(ctx context.Context, arg InsertExpenseParams) error {
@@ -119,6 +143,9 @@ func (q *Queries) InsertExpense(ctx context.Context, arg InsertExpenseParams) er
 		arg.CreatedAt,
 		arg.Status,
 		arg.AccountID,
+		arg.SeriesID,
+		arg.SeriesNo,
+		arg.SeriesTotal,
 	)
 	return err
 }
@@ -196,7 +223,7 @@ func (q *Queries) ListExpenseTagsByPeriod(ctx context.Context, period string) ([
 }
 
 const listExpensesByPeriod = `-- name: ListExpensesByPeriod :many
-SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled
+SELECT id, period, category_id, currency, amount_minor, description, spent_on, exchange_id, created_at, status, account_id, disabled, series_id, series_no, series_total
 FROM expenses
 WHERE period = ?
 ORDER BY spent_on, created_at
@@ -224,6 +251,9 @@ func (q *Queries) ListExpensesByPeriod(ctx context.Context, period string) ([]Ex
 			&i.Status,
 			&i.AccountID,
 			&i.Disabled,
+			&i.SeriesID,
+			&i.SeriesNo,
+			&i.SeriesTotal,
 		); err != nil {
 			return nil, err
 		}
@@ -236,6 +266,30 @@ func (q *Queries) ListExpensesByPeriod(ctx context.Context, period string) ([]Ex
 		return nil, err
 	}
 	return items, nil
+}
+
+const setExpenseSeries = `-- name: SetExpenseSeries :execrows
+UPDATE expenses SET series_id = ?, series_no = ?, series_total = ? WHERE id = ?
+`
+
+type SetExpenseSeriesParams struct {
+	SeriesID    sql.NullString
+	SeriesNo    sql.NullInt64
+	SeriesTotal sql.NullInt64
+	ID          string
+}
+
+func (q *Queries) SetExpenseSeries(ctx context.Context, arg SetExpenseSeriesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setExpenseSeries,
+		arg.SeriesID,
+		arg.SeriesNo,
+		arg.SeriesTotal,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateExchangeExpense = `-- name: UpdateExchangeExpense :exec
