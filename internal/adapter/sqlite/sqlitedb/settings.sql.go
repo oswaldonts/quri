@@ -11,31 +11,33 @@ import (
 )
 
 const getSettings = `-- name: GetSettings :one
-SELECT spend_offset, default_currency FROM settings WHERE id = 1
+SELECT spend_offset, default_currency, closed_through FROM settings WHERE id = 1
 `
 
 type GetSettingsRow struct {
 	SpendOffset     int64
 	DefaultCurrency sql.NullString
+	ClosedThrough   sql.NullString
 }
 
 func (q *Queries) GetSettings(ctx context.Context) (GetSettingsRow, error) {
 	row := q.db.QueryRowContext(ctx, getSettings)
 	var i GetSettingsRow
-	err := row.Scan(&i.SpendOffset, &i.DefaultCurrency)
+	err := row.Scan(&i.SpendOffset, &i.DefaultCurrency, &i.ClosedThrough)
 	return i, err
 }
 
 const updateSettings = `-- name: UpdateSettings :exec
-UPDATE settings SET spend_offset = ?, default_currency = ? WHERE id = 1
+UPDATE settings SET spend_offset = ?, default_currency = ?, closed_through = ? WHERE id = 1
 `
 
 type UpdateSettingsParams struct {
 	SpendOffset     int64
 	DefaultCurrency sql.NullString
+	ClosedThrough   sql.NullString
 }
 
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) error {
-	_, err := q.db.ExecContext(ctx, updateSettings, arg.SpendOffset, arg.DefaultCurrency)
+	_, err := q.db.ExecContext(ctx, updateSettings, arg.SpendOffset, arg.DefaultCurrency, arg.ClosedThrough)
 	return err
 }

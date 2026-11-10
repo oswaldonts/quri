@@ -8,6 +8,7 @@ import (
 
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/money"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/period"
 )
 
 // ErrInvalidInput wraps every validation error.
@@ -20,6 +21,9 @@ type Settings struct {
 	SpendOffset int
 	// DefaultCurrency is the currency the app opens in; empty means the first one in the list.
 	DefaultCurrency string
+	// ClosedThrough is the last period the user closed (YYYY-MM, empty: none). The work moves on
+	// to the period after it even when the calendar hasn't got there yet.
+	ClosedThrough string
 }
 
 // Repository is the port the service needs to persist the settings.
@@ -53,6 +57,8 @@ type UpdateInput struct {
 	SpendOffset *int
 	// DefaultCurrency "" clears the default.
 	DefaultCurrency *string
+	// ClosedThrough "" clears it (nothing is closed ahead of the calendar).
+	ClosedThrough *string
 }
 
 // Update changes the sent settings.
@@ -78,6 +84,16 @@ func (s *Service) Update(ctx context.Context, in UpdateInput) (Settings, error) 
 				return Settings{}, err
 			}
 			cur.DefaultCurrency = string(code)
+		}
+	}
+	if in.ClosedThrough != nil {
+		cur.ClosedThrough = ""
+		if *in.ClosedThrough != "" {
+			p, err := period.Parse(*in.ClosedThrough)
+			if err != nil {
+				return Settings{}, fmt.Errorf("%w: closed_through: %w", ErrInvalidInput, err)
+			}
+			cur.ClosedThrough = p.String()
 		}
 	}
 	if err := s.repo.Save(ctx, cur); err != nil {

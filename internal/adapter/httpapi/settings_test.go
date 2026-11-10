@@ -63,3 +63,25 @@ func TestDefaultCurrencyAndOrder(t *testing.T) {
 		t.Errorf("default after deleting it = %q, want empty", s.DefaultCurrency)
 	}
 }
+
+func TestClosedThrough(t *testing.T) {
+	h := newTestRouter(t)
+	var s Settings
+	decode(t, send(h, http.MethodGet, "/settings", ""), &s)
+	if s.ClosedThrough != "" {
+		t.Fatalf("fresh closed_through = %q, want empty", s.ClosedThrough)
+	}
+	decode(t, send(h, http.MethodPatch, "/settings", `{"closed_through": "2026-10"}`), &s)
+	if s.ClosedThrough != "2026-10" {
+		t.Errorf("closed_through = %q, want 2026-10", s.ClosedThrough)
+	}
+	decode(t, send(h, http.MethodPatch, "/settings", `{"spend_offset": 1}`), &s)
+	if s.ClosedThrough != "2026-10" {
+		t.Errorf("other settings cleared closed_through: %q", s.ClosedThrough)
+	}
+	assertProblem(t, send(h, http.MethodPatch, "/settings", `{"closed_through": "2026-13"}`), http.StatusUnprocessableEntity)
+	decode(t, send(h, http.MethodPatch, "/settings", `{"closed_through": ""}`), &s)
+	if s.ClosedThrough != "" {
+		t.Errorf("closed_through = %q after reopening, want empty", s.ClosedThrough)
+	}
+}
