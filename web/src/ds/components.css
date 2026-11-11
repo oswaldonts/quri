@@ -1,0 +1,784 @@
+/* ==========================================================================
+   RUNNER DS — componentes
+   Convención: prefijo .rd-, variantes con .rd-<comp>--<variante>.
+   Las esquinas cortadas usan clip-path; el "borde" se simula con un fondo
+   exterior (--_bd) y un ::before interior (--_bg) para que no se recorte.
+   ========================================================================== */
+
+/* --- Esquina cortada reutilizable --------------------------------------- */
+.rd-chamfer,
+.rd-btn,
+.rd-panel--chamfer,
+.rd-badge--chamfer {
+  --c: var(--rd-chamfer);
+  clip-path: polygon(0 0, calc(100% - var(--c)) 0, 100% var(--c), 100% 100%, var(--c) 100%, 0 calc(100% - var(--c)));
+}
+
+/* ==========================================================================
+   BUTTON
+   <button class="rd-btn rd-btn--primary">Deploy</button>
+   ========================================================================== */
+/* IMPORTANTE: --_bg debe ser un color OPACO (o transparent junto con --_bd transparent).
+   Si es translúcido, el color del borde (--_bd) se ve a través y el botón queda sólido. */
+.rd-btn {
+  --c: var(--rd-chamfer-sm);
+  --_bd: var(--rd-border-strong);
+  --_bg: var(--rd-surface);
+  --_fg: var(--rd-text);
+  position: relative;
+  isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--rd-space-2);
+  padding: .7em 1.4em;
+  border: 0;
+  background: var(--_bd);
+  color: var(--_fg);
+  font-size: var(--rd-fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--rd-tracking-wider);
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color var(--rd-dur-fast), background var(--rd-dur-fast);
+}
+.rd-btn::before {
+  content: "";
+  position: absolute; inset: 1px; z-index: -1;
+  background: var(--_bg);
+  clip-path: polygon(0 0, calc(100% - var(--c) + 1px) 0, 100% calc(var(--c) - 1px), 100% 100%, calc(var(--c) - 1px) 100%, 0 calc(100% - var(--c) + 1px));
+  transition: background var(--rd-dur-fast);
+}
+.rd-btn:hover { --_bd: var(--rd-accent); --_fg: var(--rd-accent); text-decoration: none; }
+.rd-btn:active { transform: translateY(1px); }
+.rd-btn[disabled], .rd-btn[aria-disabled="true"] { opacity: .4; pointer-events: none; }
+
+/* Botón de alternancia activado: <button aria-pressed="true"> */
+.rd-btn[aria-pressed="true"] { --_bd: var(--rd-accent); --_fg: var(--rd-accent); --_bg: color-mix(in srgb, var(--rd-accent) 12%, var(--rd-surface)); }
+
+.rd-btn--primary { --_bd: var(--rd-accent-fill); --_bg: var(--rd-accent-fill); --_fg: var(--rd-text-on-accent); }
+.rd-btn--primary:hover { --_bd: var(--rd-accent-fill-soft); --_bg: var(--rd-accent-fill-soft); --_fg: var(--rd-text-on-accent); }
+
+.rd-btn--ghost { --_bd: transparent; --_bg: transparent; --_fg: var(--rd-text-muted); }
+.rd-btn--ghost:hover { --_bd: var(--rd-border); --_bg: var(--rd-surface); --_fg: var(--rd-text); }
+
+.rd-btn--danger { --_bd: var(--rd-danger); --_bg: color-mix(in srgb, var(--rd-danger) 12%, var(--rd-surface)); --_fg: var(--rd-danger); }
+.rd-btn--danger:hover { --_bd: var(--rd-danger); --_bg: var(--rd-danger); --_fg: #fff; }
+
+.rd-btn--sm { padding: .5em 1em; font-size: var(--rd-fs-2xs); }
+.rd-btn--lg { padding: 1em 2em; font-size: var(--rd-fs-md); --c: var(--rd-chamfer); }
+.rd-btn--block { display: flex; width: 100%; }
+
+/* ==========================================================================
+   BADGE / TAG
+   <span class="rd-badge rd-badge--accent">Live</span>
+   ========================================================================== */
+.rd-badge {
+  --_c: var(--rd-text-muted);
+  display: inline-flex; align-items: center; gap: .4em;
+  padding: .15em .6em;
+  border: var(--rd-border-w) solid color-mix(in srgb, var(--_c) 45%, transparent);
+  background: color-mix(in srgb, var(--_c) 10%, transparent);
+  color: var(--_c);
+  font-size: var(--rd-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--rd-tracking-wide);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.rd-badge--accent  { --_c: var(--rd-accent); }
+.rd-badge--warning { --_c: var(--rd-warning); }
+.rd-badge--danger  { --_c: var(--rd-danger); }
+.rd-badge--success { --_c: var(--rd-success); }
+.rd-badge--info    { --_c: var(--rd-info); }
+.rd-badge--solid   { background: var(--_c); border-color: var(--_c); color: var(--rd-text-on-accent); }
+.rd-badge--accent.rd-badge--solid { background: var(--rd-accent-fill); border-color: var(--rd-accent-fill); }
+.rd-badge--dot::before {
+  content: ""; width: .5em; height: .5em; background: currentColor; border-radius: 50%;
+}
+.rd-badge--pulse::before { animation: rd-pulse 1.4s ease-in-out infinite; }
+
+/* ==========================================================================
+   PANEL (card)
+   <article class="rd-panel">
+     <header class="rd-panel__head"><span class="rd-label">Title</span></header>
+     <div class="rd-panel__body">…</div>
+   </article>
+   Modificadores: --brackets (esquinas tipo mira), --interactive, --accent
+   ========================================================================== */
+.rd-panel {
+  --_bd: var(--rd-border);
+  position: relative;
+  background: var(--rd-surface);
+  border: var(--rd-border-w) solid var(--_bd);
+  transition: border-color var(--rd-dur), background var(--rd-dur);
+}
+.rd-panel__head,
+.rd-panel__foot {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--rd-space-3);
+  padding: var(--rd-space-3) var(--rd-space-4);
+  background: var(--rd-surface-2);
+}
+.rd-panel__head { border-bottom: var(--rd-border-w) solid var(--_bd); }
+.rd-panel__foot { border-top: var(--rd-border-w) solid var(--_bd); }
+.rd-panel__body { padding: var(--rd-space-4); }
+.rd-panel__body > :last-child { margin-bottom: 0; }
+
+.rd-panel--accent { --_bd: var(--rd-accent-dim); }
+.rd-panel--accent .rd-panel__head { background: var(--rd-accent-a10); }
+
+.rd-panel--interactive { cursor: pointer; }
+.rd-panel--interactive:hover { --_bd: var(--rd-accent); background: var(--rd-surface-2); box-shadow: var(--rd-glow-soft); }
+
+/* Mira en las esquinas */
+.rd-panel--brackets::before,
+.rd-panel--brackets::after {
+  content: "";
+  position: absolute; width: 14px; height: 14px;
+  border: 2px solid var(--rd-accent);
+  pointer-events: none;
+  transition: transform var(--rd-dur) var(--rd-ease);
+}
+.rd-panel--brackets::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.rd-panel--brackets::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+.rd-panel--brackets:hover::before { transform: translate(-3px, -3px); }
+.rd-panel--brackets:hover::after  { transform: translate(3px, 3px); }
+
+/* ==========================================================================
+   SECTION HEADER
+   <div class="rd-section-head"><span class="rd-section-head__idx">01</span>
+     <h2>Title</h2></div>
+   ========================================================================== */
+.rd-section-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--rd-space-2) var(--rd-space-4);
+  margin-bottom: var(--rd-space-6);
+  padding-bottom: var(--rd-space-3);
+  border-bottom: var(--rd-border-w) solid var(--rd-border);
+}
+.rd-section-head h2 { margin: 0; }
+.rd-section-head__idx {
+  font-size: var(--rd-fs-xs); font-weight: 700; letter-spacing: var(--rd-tracking-widest);
+  color: var(--rd-accent);
+}
+.rd-section-head__aside { margin-left: auto; font-size: var(--rd-fs-xs); color: var(--rd-text-dim); text-transform: uppercase; letter-spacing: var(--rd-tracking-wider); }
+
+/* ==========================================================================
+   STAT
+   <div class="rd-stat"><span class="rd-stat__label">Kills</span>
+     <span class="rd-stat__value" data-count="1280">0</span></div>
+   ========================================================================== */
+.rd-stat { display: flex; flex-direction: column; gap: var(--rd-space-1); }
+.rd-stat__label { font-size: var(--rd-fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-widest); color: var(--rd-text-dim); }
+.rd-stat__value { font-family: var(--rd-font-display); font-size: var(--rd-fs-2xl); font-weight: 700; line-height: 1; color: var(--rd-text); font-variant-numeric: tabular-nums; }
+.rd-stat__value--accent { color: var(--rd-accent); }
+.rd-stat__delta { font-size: var(--rd-fs-xs); color: var(--rd-success); }
+.rd-stat__delta--down { color: var(--rd-danger); }
+
+/* ==========================================================================
+   PROGRESS (segmentado)
+   <div class="rd-progress" role="progressbar" aria-valuenow="70"
+        style="--value:70"><div class="rd-progress__bar"></div></div>
+   ========================================================================== */
+.rd-progress {
+  --value: 0;
+  position: relative; height: 10px;
+  background: var(--rd-bg-deep);
+  border: var(--rd-border-w) solid var(--rd-border);
+}
+.rd-progress__bar {
+  height: 100%;
+  width: calc(var(--value) * 1%);
+  background: repeating-linear-gradient(90deg, var(--rd-accent-fill) 0 6px, transparent 6px 8px);
+  transition: width var(--rd-dur-slow) var(--rd-ease);
+}
+.rd-progress--warning .rd-progress__bar { background: repeating-linear-gradient(90deg, var(--rd-warning) 0 6px, transparent 6px 8px); }
+.rd-progress--danger  .rd-progress__bar { background: repeating-linear-gradient(90deg, var(--rd-danger) 0 6px, transparent 6px 8px); }
+.rd-progress--solid   .rd-progress__bar { background: var(--rd-accent-fill); }
+.rd-progress--thin { height: 4px; }
+
+.rd-meter { display: grid; grid-template-columns: 7rem 1fr 3rem; align-items: center; gap: var(--rd-space-3); font-size: var(--rd-fs-xs); }
+.rd-meter__name { text-transform: uppercase; letter-spacing: var(--rd-tracking-wide); color: var(--rd-text-muted); }
+.rd-meter__val { text-align: right; color: var(--rd-text); font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   TABS  (ds.js: [data-tabs])
+   ========================================================================== */
+.rd-tabs__list {
+  display: flex; gap: 0; overflow-x: auto;
+  border-bottom: var(--rd-border-w) solid var(--rd-border);
+}
+.rd-tabs__tab {
+  padding: var(--rd-space-3) var(--rd-space-5);
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-size: var(--rd-fs-xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: var(--rd-tracking-wider);
+  color: var(--rd-text-dim); cursor: pointer; white-space: nowrap;
+  transition: color var(--rd-dur-fast), border-color var(--rd-dur-fast);
+}
+.rd-tabs__tab:hover:not([aria-selected="true"]) { color: var(--rd-accent); background: var(--rd-accent-a05); }
+.rd-tabs__tab[aria-selected="true"] { color: var(--rd-accent); border-bottom-color: var(--rd-accent); background: var(--rd-accent-a05); }
+.rd-tabs__panel { padding-block: var(--rd-space-5); animation: rd-fade-in var(--rd-dur) var(--rd-ease); }
+.rd-tabs__panel[hidden] { display: none; }
+
+/* ==========================================================================
+   FORM
+   ========================================================================== */
+.rd-field { display: flex; flex-direction: column; gap: var(--rd-space-2); }
+.rd-field__label { font-size: var(--rd-fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-widest); color: var(--rd-text-muted); }
+.rd-field__hint { font-size: var(--rd-fs-xs); color: var(--rd-text-dim); }
+.rd-field--error .rd-input { border-color: var(--rd-danger); }
+.rd-field--error .rd-field__hint { color: var(--rd-danger); }
+
+.rd-input,
+.rd-select,
+.rd-textarea {
+  width: 100%;
+  padding: .7em .9em;
+  background: var(--rd-bg-deep);
+  border: var(--rd-border-w) solid var(--rd-border-strong);
+  border-radius: var(--rd-radius);
+  color: var(--rd-text);
+  font-size: var(--rd-fs-sm);
+  transition: border-color var(--rd-dur-fast), box-shadow var(--rd-dur-fast);
+}
+.rd-input::placeholder, .rd-textarea::placeholder { color: var(--rd-text-dim); }
+.rd-input:hover, .rd-select:hover, .rd-textarea:hover { border-color: var(--rd-text-dim); }
+.rd-input:focus, .rd-select:focus, .rd-textarea:focus { outline: 0; border-color: var(--rd-accent); box-shadow: var(--rd-glow-soft); }
+.rd-textarea { min-height: 7rem; resize: vertical; }
+.rd-select {
+  appearance: none;
+  padding-right: 2.2em;
+  background-image: linear-gradient(45deg, transparent 50%, var(--rd-accent) 50%), linear-gradient(135deg, var(--rd-accent) 50%, transparent 50%);
+  background-position: calc(100% - 1.1em) 55%, calc(100% - .8em) 55%;
+  background-size: .3em .3em;
+  background-repeat: no-repeat;
+}
+
+/* Select personalizado (ds.js lo genera a partir de <select class="rd-select">).
+   Sin JS queda el <select> nativo con el estilo de arriba. */
+.rd-combo { position: relative; }
+.rd-combo > select.rd-combo__native {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; opacity: 0; pointer-events: none;
+}
+.rd-combo__btn { display: block; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rd-combo__btn:disabled { opacity: .4; cursor: not-allowed; }
+.rd-combo.is-open .rd-combo__btn { border-color: var(--rd-accent); box-shadow: var(--rd-glow-soft); }
+.rd-combo__list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20;
+  margin: 0; padding: var(--rd-space-1); list-style: none;
+  max-height: 15rem; overflow-y: auto;
+  background: var(--rd-surface); border: var(--rd-border-w) solid var(--rd-accent);
+  box-shadow: var(--rd-glow-soft), 0 12px 32px rgb(0 0 0 / .5);
+  scrollbar-width: thin; scrollbar-color: var(--rd-border-strong) transparent;
+  animation: rd-fade-in var(--rd-dur-fast) var(--rd-ease);
+}
+.rd-combo__list[hidden] { display: none; }
+.rd-combo.is-up .rd-combo__list { top: auto; bottom: calc(100% + 4px); }
+.rd-combo__list li {
+  position: relative; padding: .55em .8em .55em 1.9em; cursor: pointer;
+  font-size: var(--rd-fs-sm); color: var(--rd-text-muted);
+}
+.rd-combo__list li[aria-selected="true"] { color: var(--rd-text); }
+.rd-combo__list li[aria-selected="true"]::before { content: "▸"; position: absolute; left: .7em; color: var(--rd-accent); }
+.rd-combo__list li.is-active { background: var(--rd-accent-a10); color: var(--rd-accent); }
+.rd-combo__list li[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
+.rd-field--error .rd-select { border-color: var(--rd-danger); }
+
+/* Checkbox / radio / toggle: <label class="rd-check"><input type="checkbox"><span>Texto</span></label> */
+.rd-check { display: inline-flex; align-items: center; gap: var(--rd-space-3); cursor: pointer; font-size: var(--rd-fs-sm); color: var(--rd-text-muted); }
+.rd-check input { position: absolute; opacity: 0; pointer-events: none; }
+.rd-check::before {
+  content: ""; flex: none; width: 1.1em; height: 1.1em;
+  border: var(--rd-border-w) solid var(--rd-border-strong); background: var(--rd-bg-deep);
+  transition: background var(--rd-dur-fast), border-color var(--rd-dur-fast);
+}
+.rd-check:has(input[type="radio"])::before { border-radius: 50%; }
+.rd-check:has(input:checked)::before { background: var(--rd-accent-fill); border-color: var(--rd-accent); box-shadow: inset 0 0 0 3px var(--rd-bg-deep); }
+.rd-check:has(input:checked) { color: var(--rd-text); }
+.rd-check:has(input:focus-visible)::before { outline: 2px solid var(--rd-accent); outline-offset: 2px; }
+.rd-check:has(input:disabled) { opacity: .4; cursor: not-allowed; }
+
+.rd-toggle { display: inline-flex; align-items: center; gap: var(--rd-space-3); cursor: pointer; font-size: var(--rd-fs-sm); color: var(--rd-text-muted); }
+.rd-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.rd-toggle::before {
+  content: ""; flex: none; width: 2.4em; height: 1.2em;
+  border: var(--rd-border-w) solid var(--rd-border-strong); background: var(--rd-bg-deep);
+  background-image: linear-gradient(var(--rd-text-dim), var(--rd-text-dim));
+  background-size: .7em .7em; background-repeat: no-repeat; background-position: .2em 50%;
+  transition: background-position var(--rd-dur) var(--rd-ease), border-color var(--rd-dur), background-color var(--rd-dur);
+}
+.rd-toggle:has(input:checked)::before {
+  border-color: var(--rd-accent); background-color: var(--rd-accent-a10);
+  background-image: linear-gradient(var(--rd-accent), var(--rd-accent));
+  background-position: calc(100% - .2em) 50%;
+}
+.rd-toggle:has(input:focus-visible)::before { outline: 2px solid var(--rd-accent); outline-offset: 2px; }
+
+/* ==========================================================================
+   TABLE
+   ========================================================================== */
+.rd-table-wrap { overflow-x: auto; border: var(--rd-border-w) solid var(--rd-border); }
+.rd-table { width: 100%; border-collapse: collapse; font-size: var(--rd-fs-sm); }
+.rd-table th, .rd-table td { padding: var(--rd-space-3) var(--rd-space-4); text-align: left; white-space: nowrap; }
+.rd-table th {
+  background: var(--rd-surface-2); color: var(--rd-text-muted);
+  font-size: var(--rd-fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-wider);
+  border-bottom: var(--rd-border-w) solid var(--rd-border-strong);
+}
+.rd-table td { border-bottom: var(--rd-border-w) solid var(--rd-border); color: var(--rd-text); }
+.rd-table tbody tr:last-child td { border-bottom: 0; }
+.rd-table tbody tr:hover td { background: var(--rd-accent-a05); }
+.rd-table .is-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   ALERT  (ds.js: [data-dismiss] cierra)
+   ========================================================================== */
+.rd-alert {
+  --_c: var(--rd-accent);
+  display: flex; align-items: flex-start; gap: var(--rd-space-3);
+  padding: var(--rd-space-3) var(--rd-space-4);
+  background: color-mix(in srgb, var(--_c) 8%, var(--rd-surface));
+  border: var(--rd-border-w) solid color-mix(in srgb, var(--_c) 40%, transparent);
+  border-left: 3px solid var(--_c);
+  font-size: var(--rd-fs-sm); color: var(--rd-text);
+}
+.rd-alert__title { font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-wide); color: var(--_c); margin-right: .5em; }
+.rd-alert__close { margin-left: auto; background: none; border: 0; color: var(--rd-text-dim); cursor: pointer; font-size: 1.1em; line-height: 1; padding: 0 .25em; }
+.rd-alert__close:hover { color: var(--rd-text); }
+.rd-alert--warning { --_c: var(--rd-warning); }
+.rd-alert--danger  { --_c: var(--rd-danger); }
+.rd-alert--success { --_c: var(--rd-success); }
+.rd-alert--info    { --_c: var(--rd-info); }
+
+/* ==========================================================================
+   NAV
+   ========================================================================== */
+.rd-nav {
+  position: sticky; top: 0; z-index: var(--rd-z-nav);
+  background: color-mix(in srgb, var(--rd-bg) 85%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: var(--rd-border-w) solid var(--rd-border);
+}
+.rd-nav__inner { display: flex; align-items: center; gap: var(--rd-space-5); min-height: 3.5rem; }
+.rd-nav__brand { font-family: var(--rd-font-display); font-weight: 700; font-size: var(--rd-fs-md); letter-spacing: var(--rd-tracking-wider); text-transform: uppercase; color: var(--rd-text); }
+.rd-nav__brand:hover { text-decoration: none; color: var(--rd-accent); }
+.rd-nav__brand::before { content: "▮ "; color: var(--rd-accent); }
+.rd-nav__links { display: flex; gap: var(--rd-space-1); margin-left: auto; min-width: 0; overflow-x: auto; }
+.rd-nav__link {
+  padding: var(--rd-space-2) var(--rd-space-3);
+  font-size: var(--rd-fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-wider);
+  color: var(--rd-text-muted); white-space: nowrap;
+}
+.rd-nav__link:hover { color: var(--rd-accent); text-decoration: none; }
+.rd-nav__link[aria-current="page"], .rd-nav__link.is-active { color: var(--rd-accent); }
+.rd-nav__link[aria-current="page"]::before, .rd-nav__link.is-active::before { content: "> "; }
+
+/* ==========================================================================
+   KEY-VALUE LIST  <dl class="rd-kv"><div><dt>…</dt><dd>…</dd></div></dl>
+   ========================================================================== */
+.rd-kv { margin: 0; }
+.rd-kv > div { display: flex; justify-content: space-between; gap: var(--rd-space-4); padding: var(--rd-space-2) 0; border-bottom: 1px dashed var(--rd-border); font-size: var(--rd-fs-sm); }
+.rd-kv > div:last-child { border-bottom: 0; }
+.rd-kv dt { color: var(--rd-text-dim); text-transform: uppercase; letter-spacing: var(--rd-tracking-wide); font-size: var(--rd-fs-xs); }
+.rd-kv dd { margin: 0; color: var(--rd-text); text-align: right; }
+
+/* ==========================================================================
+   TOOLTIP  <span data-tip="Texto">…</span>
+   ========================================================================== */
+[data-tip] { position: relative; cursor: help; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(4px);
+  padding: .4em .8em; white-space: nowrap;
+  background: var(--rd-bg-deep); border: var(--rd-border-w) solid var(--rd-accent);
+  color: var(--rd-text); font-size: var(--rd-fs-2xs); text-transform: uppercase; letter-spacing: var(--rd-tracking-wide);
+  opacity: 0; pointer-events: none; z-index: 10;
+  transition: opacity var(--rd-dur-fast), transform var(--rd-dur-fast);
+}
+[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transform: translateX(-50%); }
+
+/* ==========================================================================
+   DIALOG  <dialog class="rd-dialog"> (ds.js: [data-dialog-open="#id"])
+   ========================================================================== */
+.rd-dialog {
+  width: min(32rem, calc(100% - 2rem));
+  padding: 0; border: var(--rd-border-w) solid var(--rd-accent);
+  background: var(--rd-surface); color: var(--rd-text);
+  box-shadow: var(--rd-glow-soft), 0 24px 64px rgb(0 0 0 / .6);
+}
+.rd-dialog::backdrop { background: rgb(8 8 12 / .8); backdrop-filter: blur(4px); }
+.rd-dialog[open] { animation: rd-fade-in var(--rd-dur) var(--rd-ease); }
+
+/* ==========================================================================
+   EFECTOS
+   ========================================================================== */
+/* Cursor parpadeante: <span class="rd-cursor"></span> */
+.rd-cursor::after { content: "█"; margin-left: .15em; color: var(--rd-accent); animation: rd-blink 1s steps(1) infinite; }
+
+/* Glitch: <span class="rd-glitch" data-text="TEXTO">TEXTO</span> */
+.rd-glitch { position: relative; display: inline-block; }
+.rd-glitch::before, .rd-glitch::after {
+  content: attr(data-text); position: absolute; inset: 0; pointer-events: none; opacity: 0;
+}
+.rd-glitch::before { color: var(--rd-danger); clip-path: inset(0 0 55% 0); }
+.rd-glitch::after  { color: var(--rd-info);   clip-path: inset(55% 0 0 0); }
+.rd-glitch:hover::before, .rd-glitch:hover::after,
+.rd-glitch.is-glitching::before, .rd-glitch.is-glitching::after { opacity: .85; animation: rd-glitch .35s steps(2) infinite; }
+
+/* Ticker: <div class="rd-ticker"><div class="rd-ticker__track"><span>…</span><span>…</span></div></div>
+   (duplica el contenido del track para un loop continuo; ds.js lo hace solo) */
+.rd-ticker { overflow: hidden; border-block: var(--rd-border-w) solid var(--rd-border); background: var(--rd-bg-deep); }
+.rd-ticker__track { display: flex; width: max-content; animation: rd-ticker 30s linear infinite; }
+.rd-ticker__track > * { padding: .6em 2em; font-size: var(--rd-fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-widest); color: var(--rd-text-dim); white-space: nowrap; }
+.rd-ticker__track > *::before { content: "◆"; color: var(--rd-accent); margin-right: 1.5em; }
+.rd-ticker:hover .rd-ticker__track { animation-play-state: paused; }
+
+/* Divisor con rombo: <div class="rd-divider"></div> */
+.rd-divider { display: flex; align-items: center; gap: var(--rd-space-3); color: var(--rd-text-dim); margin-block: var(--rd-space-6); }
+.rd-divider::before, .rd-divider::after { content: ""; flex: 1; height: 1px; background: var(--rd-border); }
+.rd-divider::before { background: linear-gradient(90deg, transparent, var(--rd-border)); }
+.rd-divider::after  { background: linear-gradient(270deg, transparent, var(--rd-border)); }
+.rd-divider > span { font-size: var(--rd-fs-2xs); text-transform: uppercase; letter-spacing: var(--rd-tracking-widest); }
+
+/* --- Keyframes ----------------------------------------------------------- */
+@keyframes rd-blink   { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes rd-pulse   { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes rd-fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes rd-ticker  { to { transform: translateX(-50%); } }
+@keyframes rd-glitch  {
+  0%   { transform: translate(0); }
+  25%  { transform: translate(-2px, 1px); }
+  50%  { transform: translate(2px, -1px); }
+  75%  { transform: translate(-1px, -1px); }
+  100% { transform: translate(1px, 1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rd-ticker__track, .rd-cursor::after, .rd-badge--pulse::before, .rd-glitch::before, .rd-glitch::after { animation: none !important; }
+}
+
+/* ==========================================================================
+   ICONOS  <svg class="rd-icon"><use href="#i-search"/></svg>  (icons.js)
+   ========================================================================== */
+.rd-icon {
+  flex: none; width: 1.25em; height: 1.25em;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: square; stroke-linejoin: miter;
+  vertical-align: -.25em;
+}
+.rd-icon--sm { width: 1em; height: 1em; }
+.rd-icon--lg { width: 1.75em; height: 1.75em; }
+.rd-icon--xl { width: 2.5em; height: 2.5em; stroke-width: 1.5; }
+.rd-btn .rd-icon { margin-inline: -.2em; }
+.rd-alert__close .rd-icon { width: 1.1em; height: 1.1em; vertical-align: middle; }
+
+/* Alternador de tema: muestra el sol en oscuro y la luna en claro */
+.rd-theme-toggle .i-moon { display: none; }
+[data-theme="light"] .rd-theme-toggle .i-sun { display: none; }
+[data-theme="light"] .rd-theme-toggle .i-moon { display: inline; }
+
+/* ==========================================================================
+   NAV RESPONSIVE  (ds.js: [data-nav-toggle])
+   ========================================================================== */
+.rd-nav__actions { display: flex; align-items: center; gap: var(--rd-space-2); margin-left: var(--rd-space-3); }
+.rd-nav__toggle { display: none; }
+@media (max-width: 48rem) {
+  .rd-nav__toggle { display: inline-flex; }
+  .rd-nav__actions { margin-left: auto; }
+  .rd-nav__links {
+    display: none; position: absolute; top: 100%; left: 0; right: 0; margin: 0;
+    flex-direction: column; gap: 0; overflow: visible;
+    padding: var(--rd-space-2) var(--rd-gutter);
+    background: var(--rd-bg); border-bottom: var(--rd-border-w) solid var(--rd-border);
+  }
+  .rd-nav.is-open .rd-nav__links { display: flex; }
+  .rd-nav__link { padding: var(--rd-space-3) 0; border-bottom: 1px dashed var(--rd-border); }
+  .rd-nav__link:last-child { border-bottom: 0; }
+}
+
+/* ==========================================================================
+   BREADCRUMBS  <nav><ol class="rd-breadcrumbs"><li><a>…</a></li>…</ol></nav>
+   ========================================================================== */
+.rd-breadcrumbs { display: flex; flex-wrap: wrap; gap: var(--rd-space-2); margin: 0; padding: 0; list-style: none; font-size: var(--rd-fs-xs); text-transform: uppercase; letter-spacing: var(--rd-tracking-wide); }
+.rd-breadcrumbs li { display: flex; align-items: center; gap: var(--rd-space-2); color: var(--rd-text-dim); }
+.rd-breadcrumbs li + li::before { content: "/"; color: var(--rd-border-strong); }
+.rd-breadcrumbs a { color: var(--rd-text-muted); }
+.rd-breadcrumbs a:hover { color: var(--rd-accent); text-decoration: none; }
+.rd-breadcrumbs [aria-current="page"] { color: var(--rd-accent); }
+
+/* ==========================================================================
+   PAGINATION  <ul class="rd-pagination"><li><a class="rd-pagination__item">…
+   ========================================================================== */
+.rd-pagination { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.rd-pagination__item {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4em;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 .7em;
+  background: var(--rd-surface); border: var(--rd-border-w) solid var(--rd-border);
+  color: var(--rd-text-muted); font-size: var(--rd-fs-xs); font-weight: 700; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--rd-dur-fast), color var(--rd-dur-fast);
+}
+a.rd-pagination__item:not([aria-current="page"]):hover, button.rd-pagination__item:not([aria-current="page"]):hover { border-color: var(--rd-accent); color: var(--rd-accent); text-decoration: none; }
+.rd-pagination__item[aria-current="page"] { background: var(--rd-accent-fill); border-color: var(--rd-accent-fill); color: var(--rd-text-on-accent); }
+.rd-pagination__item[disabled], .rd-pagination__item[aria-disabled="true"] { opacity: .4; pointer-events: none; }
+.rd-pagination__gap { border-color: transparent; background: none; cursor: default; }
+
+/* ==========================================================================
+   STEPPER  Indicador de pasos de un proceso (1 → 2 → 3).
+   <ol class="rd-stepper"><li class="rd-stepper__step is-done">…</li>
+   <li class="rd-stepper__step" aria-current="step">…</li></ol>
+   ========================================================================== */
+.rd-stepper { display: flex; margin: 0; padding: 0; list-style: none; counter-reset: rd-step; }
+.rd-stepper__step {
+  position: relative; flex: 1; display: flex; flex-direction: column; gap: var(--rd-space-2);
+  counter-increment: rd-step; padding-right: var(--rd-space-3); min-width: 0;
+  font-size: var(--rd-fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-wider); color: var(--rd-text-dim);
+}
+.rd-stepper__step::before {
+  content: counter(rd-step);
+  position: relative; z-index: 1; display: grid; place-items: center; width: 2rem; height: 2rem;
+  background: var(--rd-bg-deep); border: var(--rd-border-w) solid var(--rd-border-strong);
+  font-size: var(--rd-fs-xs); color: var(--rd-text-muted);
+}
+.rd-stepper__step::after { content: ""; position: absolute; top: 1rem; left: 2.25rem; right: .25rem; height: 1px; background: var(--rd-border); }
+.rd-stepper__step:last-child::after { display: none; }
+.rd-stepper__step.is-done { color: var(--rd-text-muted); }
+.rd-stepper__step.is-done::before { content: "✓"; background: var(--rd-accent-fill); border-color: var(--rd-accent-fill); color: var(--rd-text-on-accent); }
+.rd-stepper__step.is-done::after { background: var(--rd-accent); }
+.rd-stepper__step[aria-current="step"] { color: var(--rd-text); }
+.rd-stepper__step[aria-current="step"]::before { border-color: var(--rd-accent); color: var(--rd-accent); box-shadow: var(--rd-glow-soft); }
+
+/* ==========================================================================
+   ACCORDION  (nativo: <details>; con el mismo name solo uno abierto a la vez)
+   <div class="rd-accordion"><details name="g"><summary>…</summary>
+   <div class="rd-accordion__body">…</div></details></div>
+   ========================================================================== */
+.rd-accordion { border: var(--rd-border-w) solid var(--rd-border); background: var(--rd-surface); }
+.rd-accordion details + details { border-top: var(--rd-border-w) solid var(--rd-border); }
+.rd-accordion summary {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--rd-space-4);
+  padding: var(--rd-space-3) var(--rd-space-4); cursor: pointer; list-style: none;
+  font-size: var(--rd-fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-wider);
+}
+.rd-accordion summary::-webkit-details-marker { display: none; }
+.rd-accordion summary::after { content: "+"; font-size: 1.4em; line-height: 1; color: var(--rd-accent); }
+.rd-accordion summary:hover { background: var(--rd-accent-a05); }
+.rd-accordion details[open] > summary { color: var(--rd-accent); background: var(--rd-accent-a05); }
+.rd-accordion details[open] > summary::after { content: "−"; }
+.rd-accordion__body { padding: var(--rd-space-4); border-top: var(--rd-border-w) dashed var(--rd-border); animation: rd-fade-in var(--rd-dur) var(--rd-ease); }
+.rd-accordion__body > :last-child { margin-bottom: 0; }
+
+/* ==========================================================================
+   DROPDOWN (menú y popover)  (ds.js)
+   <div class="rd-dropdown"><button data-dropdown-trigger>…</button>
+     <div class="rd-dropdown__panel rd-menu" role="menu">
+       <button role="menuitem" class="rd-menu__item">…</button></div></div>
+   Para contenido libre usa .rd-popover en vez de .rd-menu (sin role=menu).
+   ========================================================================== */
+.rd-dropdown { position: relative; display: inline-block; }
+.rd-dropdown__panel {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 12rem;
+  background: var(--rd-surface); border: var(--rd-border-w) solid var(--rd-accent);
+  box-shadow: var(--rd-glow-soft), 0 12px 32px rgb(0 0 0 / .4);
+  animation: rd-fade-in var(--rd-dur-fast) var(--rd-ease);
+}
+.rd-dropdown__panel[hidden] { display: none; }
+.rd-dropdown.is-up .rd-dropdown__panel { top: auto; bottom: calc(100% + 4px); }
+.rd-dropdown[data-align="end"] .rd-dropdown__panel { left: auto; right: 0; }
+.rd-popover { padding: var(--rd-space-4); width: max-content; max-width: min(20rem, calc(100vw - 2rem)); }
+.rd-popover > :last-child { margin-bottom: 0; }
+.rd-menu { padding: var(--rd-space-1); }
+.rd-menu__item {
+  display: flex; align-items: center; gap: var(--rd-space-3); width: 100%;
+  padding: .6em .8em; background: none; border: 0; text-align: left; cursor: pointer;
+  font-size: var(--rd-fs-sm); color: var(--rd-text-muted);
+}
+.rd-menu__item:hover, .rd-menu__item:focus-visible { background: var(--rd-accent-a10); color: var(--rd-accent); outline: 0; }
+.rd-menu__item--danger:hover, .rd-menu__item--danger:focus-visible { background: color-mix(in srgb, var(--rd-danger) 12%, transparent); color: var(--rd-danger); }
+.rd-menu__item[disabled], .rd-menu__item[aria-disabled="true"] { opacity: .4; pointer-events: none; }
+.rd-menu__sep { height: 1px; margin: var(--rd-space-1) 0; border: 0; background: var(--rd-border); }
+
+/* ==========================================================================
+   TOAST  RunnerDS.toast({ title, message, variant, duration })  (ds.js)
+   Reutiliza .rd-alert; el contenedor lo crea ds.js.
+   ========================================================================== */
+.rd-toasts {
+  position: fixed; right: var(--rd-gutter); bottom: var(--rd-gutter); z-index: var(--rd-z-toast);
+  display: flex; flex-direction: column; gap: var(--rd-space-2);
+  width: min(24rem, calc(100vw - 2 * var(--rd-gutter))); pointer-events: none;
+}
+.rd-toast { pointer-events: auto; box-shadow: 0 8px 24px rgb(0 0 0 / .35); animation: rd-toast-in var(--rd-dur) var(--rd-ease); transition: opacity var(--rd-dur), transform var(--rd-dur); }
+.rd-toast.is-leaving { opacity: 0; transform: translateX(12px); }
+@keyframes rd-toast-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+
+/* ==========================================================================
+   CARGA Y ESTADOS VACÍOS
+   ========================================================================== */
+.rd-skeleton {
+  display: block; min-height: 1em;
+  background: linear-gradient(90deg, var(--rd-surface-2) 0%, var(--rd-border) 50%, var(--rd-surface-2) 100%);
+  background-size: 200% 100%; animation: rd-shimmer 1.4s linear infinite;
+}
+.rd-skeleton--text { height: .9em; margin-bottom: .6em; }
+.rd-skeleton--block { height: 6rem; }
+.rd-skeleton--avatar { width: 2.5rem; height: 2.5rem; }
+@keyframes rd-shimmer { to { background-position: -200% 0; } }
+
+.rd-spinner {
+  display: inline-block; width: 1.25em; height: 1.25em; vertical-align: -.25em;
+  border: 2px solid var(--rd-border-strong); border-top-color: var(--rd-accent);
+  animation: rd-spin .8s linear infinite;
+}
+.rd-spinner--lg { width: 2.25em; height: 2.25em; border-width: 3px; }
+@keyframes rd-spin { to { transform: rotate(1turn); } }
+
+.rd-empty { display: flex; flex-direction: column; align-items: center; gap: var(--rd-space-3); padding: var(--rd-space-7) var(--rd-space-5); text-align: center; border: 1px dashed var(--rd-border-strong); }
+.rd-empty .rd-icon { color: var(--rd-text-dim); }
+.rd-empty__title { margin: 0; font-size: var(--rd-fs-md); font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-wider); color: var(--rd-text); }
+.rd-empty p { margin: 0; font-size: var(--rd-fs-sm); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rd-skeleton, .rd-spinner, .rd-toast { animation: none !important; }
+}
+
+/* ==========================================================================
+   AVATAR Y CHIPS
+   ========================================================================== */
+.rd-avatar {
+  position: relative; display: inline-grid; place-items: center; flex: none;
+  width: 2.5rem; height: 2.5rem; overflow: visible;
+  background: var(--rd-surface-2); border: var(--rd-border-w) solid var(--rd-border-strong);
+  font-size: var(--rd-fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--rd-text);
+}
+.rd-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.rd-avatar--sm { width: 1.75rem; height: 1.75rem; font-size: var(--rd-fs-2xs); }
+.rd-avatar--lg { width: 4rem; height: 4rem; font-size: var(--rd-fs-md); }
+.rd-avatar--accent { background: var(--rd-accent-fill); border-color: var(--rd-accent-fill); color: var(--rd-text-on-accent); }
+.rd-avatar--online::after, .rd-avatar--offline::after {
+  content: ""; position: absolute; right: -4px; bottom: -4px; width: 10px; height: 10px;
+  background: var(--rd-success); border: 2px solid var(--rd-bg);
+}
+.rd-avatar--offline::after { background: var(--rd-text-dim); }
+.rd-avatar-group { display: inline-flex; }
+.rd-avatar-group .rd-avatar + .rd-avatar { margin-left: -.6rem; }
+.rd-avatar-group .rd-avatar { box-shadow: 0 0 0 2px var(--rd-bg); }
+
+.rd-chip {
+  display: inline-flex; align-items: center; gap: .5em; padding: .25em .4em .25em .8em;
+  background: var(--rd-accent-a10); border: var(--rd-border-w) solid var(--rd-accent-dim);
+  font-size: var(--rd-fs-xs); color: var(--rd-accent);
+}
+.rd-chip__x { display: grid; place-items: center; padding: .15em; background: none; border: 0; color: inherit; opacity: .7; cursor: pointer; }
+.rd-chip__x:hover { color: var(--rd-danger); opacity: 1; }
+.rd-chip__x .rd-icon { width: 1em; height: 1em; }
+
+/* ==========================================================================
+   ENTRADAS EXTRA: grupo con icono, range, archivo
+   ========================================================================== */
+.rd-input-group {
+  display: flex; align-items: center; gap: var(--rd-space-2); padding-left: .9em;
+  background: var(--rd-bg-deep); border: var(--rd-border-w) solid var(--rd-border-strong); color: var(--rd-text-dim);
+  transition: border-color var(--rd-dur-fast), box-shadow var(--rd-dur-fast);
+}
+.rd-input-group:hover { border-color: var(--rd-text-dim); }
+.rd-input-group:focus-within { border-color: var(--rd-accent); box-shadow: var(--rd-glow-soft); color: var(--rd-accent); }
+.rd-input-group .rd-input { border: 0; background: transparent; box-shadow: none; padding-left: 0; color: var(--rd-text); }
+.rd-input-group kbd { margin-right: .6em; }
+
+.rd-range { --p: 50; width: 100%; height: 6px; margin: .75rem 0; appearance: none; cursor: pointer;
+  background: linear-gradient(90deg, var(--rd-accent-fill) calc(var(--p) * 1%), var(--rd-border-strong) 0); }
+[data-theme="light"] .rd-range { box-shadow: 0 0 0 1px var(--rd-border-strong); }
+.rd-range::-webkit-slider-thumb { appearance: none; width: 14px; height: 18px; background: var(--rd-accent-fill); border: 2px solid var(--rd-bg); outline: 1px solid var(--rd-accent); }
+.rd-range::-moz-range-thumb { width: 10px; height: 14px; background: var(--rd-accent-fill); border: 2px solid var(--rd-bg); border-radius: 0; outline: 1px solid var(--rd-accent); }
+.rd-range:focus-visible { outline: 2px solid var(--rd-accent); outline-offset: 6px; }
+
+.rd-file { width: 100%; padding: .4em; background: var(--rd-bg-deep); border: var(--rd-border-w) dashed var(--rd-border-strong); color: var(--rd-text-muted); font-size: var(--rd-fs-sm); cursor: pointer; }
+.rd-file::file-selector-button {
+  margin-right: 1em; padding: .5em 1em; background: var(--rd-surface-2); border: var(--rd-border-w) solid var(--rd-border-strong);
+  color: var(--rd-text); font: inherit; font-size: var(--rd-fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--rd-tracking-wide); cursor: pointer;
+}
+.rd-file:hover { border-color: var(--rd-accent); }
+.rd-file:hover::file-selector-button { border-color: var(--rd-accent); color: var(--rd-accent); }
+
+/* ==========================================================================
+   AJUSTES TEMA CLARO
+   Aquí --rd-accent es tinta oscura, así que los elementos que dependían del
+   verde como texto recuperan la marca con rellenos/resaltados en lima real.
+   ========================================================================== */
+[data-theme="light"] .rd-eyebrow {
+  background: var(--rd-accent-fill); color: var(--rd-text-on-accent);
+  box-shadow: .5em 0 0 0 var(--rd-accent-fill), -.5em 0 0 0 var(--rd-accent-fill), 0 0 0 .15em var(--rd-accent-fill);
+}
+[data-theme="light"] p a:not([class]) {
+  color: var(--rd-text); text-decoration: underline;
+  text-decoration-color: var(--rd-accent-fill); text-decoration-thickness: .18em; text-underline-offset: .2em;
+}
+[data-theme="light"] p a:not([class]):hover { background: var(--rd-accent-fill); text-decoration: none; }
+[data-theme="light"] .rd-nav__link:is([aria-current="page"], .is-active) { background: var(--rd-accent-fill); color: var(--rd-text-on-accent); }
+[data-theme="light"] .rd-tabs__tab[aria-selected="true"] { background: var(--rd-accent-fill); color: var(--rd-text-on-accent); }
+[data-theme="light"] .rd-btn[aria-pressed="true"] { --_bg: color-mix(in srgb, var(--rd-accent-fill) 55%, var(--rd-surface)); }
+[data-theme="light"] .rd-badge--accent { background: color-mix(in srgb, var(--rd-accent-fill) 45%, var(--rd-surface)); border-color: var(--rd-accent-fill); color: var(--rd-text); }
+[data-theme="light"] .rd-alert:not([class*="rd-alert--"]) { --_c: var(--rd-accent-fill); }
+[data-theme="light"] .rd-alert:not([class*="rd-alert--"]) .rd-alert__title { color: var(--rd-text); }
+[data-theme="light"] .rd-panel--accent .rd-panel__head { background: var(--rd-accent-fill); color: var(--rd-text-on-accent); }
+[data-theme="light"] .rd-panel--accent .rd-panel__head .rd-label { color: var(--rd-text-on-accent); }
+[data-theme="light"] .rd-combo__list li.is-active,
+[data-theme="light"] .rd-menu__item:hover,
+[data-theme="light"] .rd-menu__item:focus-visible { background: var(--rd-accent-fill); color: var(--rd-text-on-accent); }
+/* El marcador se pinta con box-shadow (no ocupa espacio): con padding el título se desplazaba al cambiar de tema */
+[data-theme="light"] .rd-section-head__idx {
+  background: var(--rd-accent-fill); color: var(--rd-text-on-accent);
+  box-shadow: .4em 0 0 0 var(--rd-accent-fill), -.4em 0 0 0 var(--rd-accent-fill), 0 0 0 .1em var(--rd-accent-fill);
+}
+
+/* ==========================================================================
+   BOTÓN CON LED  <button class="rd-btn rd-btn--ghost rd-btn--led" aria-pressed="true">
+   Interruptor que se queda neutro y muestra su estado con un indicador:
+   activo = cuadro lleno con anillo, apagado = cuadro hueco (no depende solo del color).
+   ========================================================================== */
+.rd-btn--led::after {
+  content: ""; flex: none; width: .55em; height: .55em;
+  background: transparent; box-shadow: inset 0 0 0 1px var(--rd-border-strong);
+  transition: background var(--rd-dur-fast), box-shadow var(--rd-dur-fast);
+}
+.rd-btn.rd-btn--led[aria-pressed="true"] { --_bd: transparent; --_bg: transparent; --_fg: var(--rd-text-muted); }
+.rd-btn.rd-btn--led[aria-pressed="true"]:hover { --_bd: var(--rd-border); --_bg: var(--rd-surface); --_fg: var(--rd-text); }
+.rd-btn.rd-btn--led[aria-pressed="true"]::after { background: var(--rd-accent-fill); box-shadow: 0 0 0 1px var(--rd-accent), 0 0 8px var(--rd-accent-fill); }
+
+/* ==========================================================================
+   CAMBIO DE TEMA: todo cambia a la vez (ver switchTheme en ds.js)
+   ========================================================================== */
+.rd-theme-switching *, .rd-theme-switching *::before, .rd-theme-switching *::after { transition: none !important; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 220ms; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+
+/* --- Tema claro: resaltado de hover con lima (no tinta) --------------------- */
+[data-theme="light"] .rd-btn:not(.rd-btn--primary):not(.rd-btn--danger):not(.rd-btn--ghost):hover {
+  --_bd: var(--rd-hover-bd); --_bg: var(--rd-hover-bg); --_fg: var(--rd-text-on-accent);
+}
+[data-theme="light"] a.rd-pagination__item:not([aria-current="page"]):hover,
+[data-theme="light"] button.rd-pagination__item:not([aria-current="page"]):hover { background: var(--rd-hover-bg); border-color: var(--rd-hover-bd); color: var(--rd-text-on-accent); }
+[data-theme="light"] .rd-panel--interactive:hover { --_bd: var(--rd-hover-bd); }
+[data-theme="light"] .rd-file:hover { border-color: var(--rd-hover-bd); }
+[data-theme="light"] .rd-file:hover::file-selector-button { border-color: var(--rd-hover-bd); background: var(--rd-hover-bg); color: var(--rd-text-on-accent); }
+[data-theme="light"] .rd-breadcrumbs a:hover,
+[data-theme="light"] .rd-nav__link:hover,
+[data-theme="light"] .rd-tabs__tab:hover:not([aria-selected="true"]) { background: var(--rd-hover-bg); color: var(--rd-text-on-accent); }
+
+/* --- Tema claro: stepper y badges sólidos ----------------------------------- */
+/* Paso actual: tinte lima con borde lima oscuro (sin la sombra desplazada, que se leía como un fondo extra) */
+[data-theme="light"] .rd-stepper__step[aria-current="step"]::before {
+  background: var(--rd-hover-bg); border-color: var(--rd-hover-bd); color: var(--rd-text-on-accent); box-shadow: none;
+}
+[data-theme="light"] .rd-stepper__step.is-done::after { height: 2px; top: calc(1rem - 1px); background: var(--rd-accent-dim); }
+/* Las variantes semánticas son oscuras en claro: sobre ellas el texto debe ser blanco, no negro */
+[data-theme="light"] .rd-badge--solid:not(.rd-badge--accent) { color: #fff; }
+
+/* --- Tema claro: paneles flotantes con borde lima y sin halo ---------------- */
+[data-theme="light"] .rd-dropdown__panel,
+[data-theme="light"] .rd-combo__list,
+[data-theme="light"] .rd-dialog { border-color: var(--rd-hover-bd); box-shadow: 0 12px 32px rgb(0 0 0 / .14); }

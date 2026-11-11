@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Select from './Select.svelte'
   import { tick } from 'svelte'
   import { api, apiErrorMessage, connectionError, failureMessage, type Schemas } from './api'
   import { today } from './dates'
@@ -166,10 +167,13 @@
       <div class="row wide">
         <label>
           Tipo
-          <select bind:value={kind}>
-            <option value="salary">Sueldo</option>
-            <option value="extra">Extra</option>
-          </select>
+          <Select
+            bind:value={kind}
+            options={[
+              { value: 'salary', label: 'Sueldo' },
+              { value: 'extra', label: 'Extra' },
+            ]}
+          />
         </label>
         <label class="grow">
           Descripción
@@ -187,10 +191,10 @@
       {#if kind === 'extra'}
         <label class="wide">
           Aporte a una categoría (opcional)
-          <select bind:value={categoryId}>
-            <option value="">— ninguna —</option>
-            {#each choosable as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
-          </select>
+          <Select
+            bind:value={categoryId}
+            options={[{ value: '', label: '— ninguna —' }, ...choosable.map((c) => ({ value: c.id, label: c.name }))]}
+          />
         </label>
       {/if}
       {#if formError}<p class="error wide" role="alert">{formError}</p>{/if}

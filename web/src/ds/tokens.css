@@ -1,0 +1,183 @@
+/* ==========================================================================
+   RUNNER DS — tokens
+   Única fuente de verdad. Todo lo demás consume estas variables.
+   Inspirado en la estética de terminal de Marathon (Bungie); no es oficial.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* --- Color: superficies ------------------------------------------------ */
+  --rd-bg:            #131318;
+  --rd-bg-deep:       #0c0c10;
+  --rd-surface:       #1c1c25;
+  --rd-surface-2:     #25252f;
+  --rd-border:        #34343f;
+  --rd-border-strong: #4a4a58;
+
+  /* --- Color: texto ------------------------------------------------------ */
+  --rd-text:          #e2e2e8;
+  --rd-text-muted:    #a0a0b0;
+  --rd-text-dim:      #8a8a9c;  /* subido para cumplir contraste AA (≥4.5:1) */
+  --rd-text-on-accent:#0c0c10;
+
+  /* --- Color: acento y semánticos --------------------------------------- */
+  --rd-accent:        #c0fe04;
+  --rd-accent-soft:   #dcff6b;
+  --rd-accent-dim:    #83aa03;
+  /* "fill" = color de relleno (botones, barras). En tema claro el acento de texto
+     se oscurece pero los rellenos siguen siendo el verde lima. */
+  --rd-accent-fill:      var(--rd-accent);
+  --rd-accent-fill-soft: var(--rd-accent-soft);
+  --rd-warning:       #ff5c00;
+  --rd-danger:        #f24723;
+  --rd-success:       #22c55e;
+  --rd-info:          #4cc9f0;
+
+  /* Acento translúcido (glows, fondos de hover) */
+  --rd-accent-a05:    rgb(192 254 4 / .05);
+  --rd-accent-a10:    rgb(192 254 4 / .10);
+  --rd-accent-a25:    rgb(192 254 4 / .25);
+
+  /* --- Tipografía -------------------------------------------------------- */
+  --rd-font-mono: "JetBrains Mono", "Fira Code", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --rd-font-display: "Archivo", "Helvetica Neue", Arial, ui-sans-serif, system-ui, sans-serif;
+  --rd-stretch-display: 125%;  /* Archivo es variable en ancho (62–125%) */
+
+  --rd-fs-2xs: .6875rem;  /* 11 */
+  --rd-fs-xs:  .75rem;    /* 12 */
+  --rd-fs-sm:  .8125rem;  /* 13 */
+  --rd-fs-md:  .9375rem;  /* 15 */
+  --rd-fs-lg:  1.125rem;
+  --rd-fs-xl:  1.5rem;
+  --rd-fs-2xl: 2.25rem;
+  --rd-fs-3xl: clamp(2.5rem, 6vw, 4.5rem);
+  --rd-fs-hero:clamp(3rem, 11vw, 9rem);
+
+  --rd-tracking-tight: -.03em;
+  --rd-tracking-wide:   .08em;
+  --rd-tracking-wider:  .16em;
+  --rd-tracking-widest: .24em;
+
+  --rd-lh-tight: 1.05;
+  --rd-lh-body:  1.65;
+
+  /* --- Espaciado (base 4px) --------------------------------------------- */
+  --rd-space-1: .25rem;
+  --rd-space-2: .5rem;
+  --rd-space-3: .75rem;
+  --rd-space-4: 1rem;
+  --rd-space-5: 1.5rem;
+  --rd-space-6: 2rem;
+  --rd-space-7: 3rem;
+  --rd-space-8: 4.5rem;
+  --rd-space-9: 7rem;
+
+  /* --- Forma ------------------------------------------------------------- */
+  --rd-radius: 0;             /* el estilo es angular: sin radios */
+  --rd-radius-sm: .125rem;
+  --rd-chamfer: 10px;         /* esquina cortada, usada con clip-path */
+  --rd-chamfer-sm: 6px;
+  --rd-border-w: 1px;
+
+  /* --- Efectos ----------------------------------------------------------- */
+  --rd-glow:        0 0 0 1px var(--rd-accent), 0 0 18px rgb(192 254 4 / .35);
+  --rd-glow-soft:   0 0 24px rgb(192 254 4 / .15);
+  --rd-glow-danger: 0 0 0 1px var(--rd-danger), 0 0 18px rgb(242 71 35 / .35);
+  --rd-scanline:    repeating-linear-gradient(0deg, transparent 0 2px, rgb(0 0 0 / .12) 2px 4px);
+  --rd-grid-line:   rgb(255 255 255 / .035);
+
+  /* --- Movimiento -------------------------------------------------------- */
+  --rd-ease: cubic-bezier(.2, .8, .2, 1);
+  --rd-dur-fast: 120ms;
+  --rd-dur: 200ms;
+  --rd-dur-slow: 500ms;
+
+  /* --- Capas ------------------------------------------------------------- */
+  --rd-z-nav: 50;
+  --rd-z-overlay: 100;
+  --rd-z-toast: 110;
+
+  /* --- Layout ------------------------------------------------------------ */
+  --rd-container: 72rem;
+  --rd-gutter: clamp(1rem, 4vw, 2rem);
+}
+
+/* Variante de acento: cambia el color firma sin tocar componentes.
+   <html data-accent="orange"> */
+[data-accent="orange"] {
+  --rd-accent: #ff5c00; --rd-accent-soft: #ff9a5c; --rd-accent-dim: #b84300;
+  --rd-accent-a05: rgb(255 92 0 / .05); --rd-accent-a10: rgb(255 92 0 / .10); --rd-accent-a25: rgb(255 92 0 / .25);
+  --rd-glow: 0 0 0 1px var(--rd-accent), 0 0 18px rgb(255 92 0 / .35);
+  --rd-glow-soft: 0 0 24px rgb(255 92 0 / .15);
+}
+[data-accent="cyan"] {
+  --rd-accent: #4cc9f0; --rd-accent-soft: #9be3f7; --rd-accent-dim: #2a8cab;
+  --rd-accent-a05: rgb(76 201 240 / .05); --rd-accent-a10: rgb(76 201 240 / .10); --rd-accent-a25: rgb(76 201 240 / .25);
+  --rd-glow: 0 0 0 1px var(--rd-accent), 0 0 18px rgb(76 201 240 / .35);
+  --rd-glow-soft: 0 0 24px rgb(76 201 240 / .15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --rd-dur-fast: 0ms; --rd-dur: 0ms; --rd-dur-slow: 0ms; }
+}
+
+/* ==========================================================================
+   TEMA CLARO  —  <html data-theme="light">  (ds.js: [data-theme-toggle])
+   Mismos nombres de token, valores distintos.
+   Decisión de accesibilidad: un lima lo bastante oscuro para leerse sobre
+   blanco es en realidad marrón/oliva (y peor con daltonismo). Por eso en claro
+   el TEXTO usa tinta oscura y el lima real (--rd-accent-fill) se reserva para
+   rellenos y resaltados. Ver "AJUSTES TEMA CLARO" en components.css.
+   ========================================================================== */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --rd-bg:            #f1f1ec;
+  --rd-bg-deep:       #e7e7e0;
+  --rd-surface:       #ffffff;
+  --rd-surface-2:     #f6f6f2;
+  --rd-border:        #d2d2c8;
+  --rd-border-strong: #a9a9a0;
+
+  --rd-text:          #14141a;
+  --rd-text-muted:    #4a4a58;
+  --rd-text-dim:      #6b6b7a;
+  --rd-text-on-accent:#0c0c10;
+
+  /* "accent" como texto/línea = tinta; el color de marca vive en --rd-accent-fill */
+  --rd-accent:        #14141a;
+  --rd-accent-soft:   #3a3a46;
+  --rd-accent-dim:    #9bc400;
+  --rd-accent-fill:      #c0fe04;
+  --rd-accent-fill-soft: #d3ff4d;
+  --rd-warning: #a65f00;   /* ámbar: se distingue del rojo */
+  --rd-danger:  #c8300f;
+  --rd-success: #15803d;
+  --rd-info:    #0e7490;
+
+  /* Tintes tomados del lima real, no de un oliva */
+  --rd-accent-a05: rgb(192 254 4 / .12);
+  --rd-accent-a10: rgb(192 254 4 / .24);
+  --rd-accent-a25: rgb(192 254 4 / .50);
+
+  /* Resaltado de hover: tinte lima + borde lima oscuro (el activo/seleccionado es lima sólido) */
+  --rd-hover-bg: color-mix(in srgb, var(--rd-accent-fill) 40%, var(--rd-surface));
+  --rd-hover-bd: var(--rd-accent-dim);
+
+  /* Halo en anillo (sin desenfoque): un glow lima difuminado no se ve sobre blanco, y una sombra desplazada se lee como un fondo extra */
+  --rd-glow:        0 0 0 1px var(--rd-accent), 0 0 0 4px var(--rd-accent-a25);
+  --rd-glow-soft:   0 0 0 3px var(--rd-accent-a10);
+  --rd-glow-danger: 0 0 0 1px var(--rd-danger), 4px 4px 0 rgb(200 48 15 / .25);
+  --rd-scanline:    repeating-linear-gradient(0deg, transparent 0 2px, rgb(0 0 0 / .035) 2px 4px);
+  --rd-grid-line:   rgb(0 0 0 / .05);
+}
+/* Otros colores de marca en claro: solo cambia el relleno y los tintes */
+[data-theme="light"][data-accent="orange"] {
+  --rd-accent-fill: #ff5c00; --rd-accent-fill-soft: #ff8040; --rd-accent-dim: #ff5c00;
+  --rd-accent-a05: rgb(255 92 0 / .08); --rd-accent-a10: rgb(255 92 0 / .16); --rd-accent-a25: rgb(255 92 0 / .35);
+}
+[data-theme="light"][data-accent="cyan"] {
+  --rd-accent-fill: #4cc9f0; --rd-accent-fill-soft: #7fdbf7; --rd-accent-dim: #4cc9f0;
+  --rd-accent-a05: rgb(76 201 240 / .10); --rd-accent-a10: rgb(76 201 240 / .20); --rd-accent-a25: rgb(76 201 240 / .40);
+}

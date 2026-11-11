@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Select from './Select.svelte'
   import { onMount } from 'svelte'
   import { api, connectionError, failureMessage, type Schemas } from './api'
   import { groupNames, userGroups, type UserGroup } from './groups'
@@ -122,9 +123,7 @@
         </label>
         <label>
           Grupo
-          <select bind:value={group}>
-            {#each userGroups as g (g)}<option value={g}>{groupNames[g]}</option>{/each}
-          </select>
+          <Select bind:value={group} options={userGroups.map((g) => ({ value: g, label: groupNames[g] }))} />
         </label>
       </div>
       <div class="wide actions">
@@ -156,9 +155,11 @@
               <td colspan="3">
                 <form class="inline-edit" onsubmit={(e) => save(e, c.id)}>
                   <input bind:value={editName} maxlength="50" aria-label="Nombre de {c.name}" required />
-                  <select bind:value={editGroup} aria-label="Grupo de {c.name}">
-                    {#each userGroups as g (g)}<option value={g}>{groupNames[g]}</option>{/each}
-                  </select>
+                  <Select
+                    bind:value={editGroup}
+                    label="Grupo de {c.name}"
+                    options={userGroups.map((g) => ({ value: g, label: groupNames[g] }))}
+                  />
                   <label class="check"><input type="checkbox" bind:checked={editCommitted} /> Fija</label>
                   <button class="primary" disabled={busy}>Guardar</button>
                   <button type="button" class="link neutral" onclick={() => (editing = '')}>Cancelar</button>

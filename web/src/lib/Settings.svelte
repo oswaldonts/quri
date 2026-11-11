@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Select from './Select.svelte'
   import { onMount } from 'svelte'
   import { api, connectionError, failureMessage } from './api'
   import Categories from './Categories.svelte'
@@ -20,9 +21,8 @@
   let offsetError = $state('')
   let defaultError = $state('')
 
-  async function changeDefault(event: Event) {
-    const code = (event.currentTarget as HTMLSelectElement).value
-    defaultError = await settings.setDefaultCurrency(code).catch(() => connectionError)
+  async function changeDefault(code: string | number) {
+    defaultError = await settings.setDefaultCurrency(String(code)).catch(() => connectionError)
   }
 
   async function move(index: number, direction: number) {
@@ -33,8 +33,8 @@
     error = await currencies.reorder(codes).catch(() => connectionError)
   }
 
-  async function changeOffset(event: Event) {
-    const value = Number((event.currentTarget as HTMLSelectElement).value)
+  async function changeOffset(raw: string | number) {
+    const value = Number(raw)
     offsetError = await settings.setSpendOffset(value).catch(() => connectionError)
   }
 
@@ -185,10 +185,12 @@
   </div>
   <label>
     Al abrir la app se muestra la hoja de
-    <select value={settings.defaultCurrency} onchange={changeDefault} aria-label="Moneda por defecto">
-      <option value="">— la primera de la lista —</option>
-      {#each currencies.codes as c (c)}<option value={c}>{c}</option>{/each}
-    </select>
+    <Select
+      value={settings.defaultCurrency}
+      onchange={changeDefault}
+      label="Moneda por defecto"
+      options={[{ value: '', label: '— la primera de la lista —' }, ...currencies.codes.map((c) => ({ value: c, label: c }))]}
+    />
   </label>
   {#if defaultError}<p class="error" role="alert">{defaultError}</p>{/if}
   <p class="muted">Sin moneda por defecto se abre la última que usaste. El orden de las monedas se cambia en la pestaña Monedas.</p>
@@ -200,10 +202,15 @@
   </div>
   <label>
     El dinero de un mes se gasta
-    <select value={settings.spendOffset} onchange={changeOffset} aria-label="Mes en que se gasta">
-      <option value={0}>ese mismo mes</option>
-      <option value={1}>el mes siguiente</option>
-    </select>
+    <Select
+      value={settings.spendOffset}
+      onchange={changeOffset}
+      label="Mes en que se gasta"
+      options={[
+        { value: 0, label: 'ese mismo mes' },
+        { value: 1, label: 'el mes siguiente' },
+      ]}
+    />
   </label>
   {#if offsetError}<p class="error" role="alert">{offsetError}</p>{/if}
   <p class="muted">

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Select from './Select.svelte'
   import { api, connectionError, failureMessage, type Schemas } from './api'
   import { formatMoney, isNegative, isZero, parseSigned, subtractAmounts, sumAmounts, type Currency } from './money'
 
@@ -161,10 +162,11 @@
   {#if banks.length}
     <label>
       Descontar de
-      <select value={sourceId} onchange={(e) => (fromId = e.currentTarget.value)}>
-        {#each banks as b (b.id)}<option value={b.id}>{b.name}</option>{/each}
-        <option value="">Ninguna</option>
-      </select>
+      <Select
+        value={sourceId}
+        onchange={(v) => (fromId = String(v))}
+        options={[...banks.map((b) => ({ value: b.id, label: b.name })), { value: '', label: 'Ninguna' }]}
+      />
     </label>
     {#if source && delta && !isZero(delta)}
       <span class="muted">
@@ -188,10 +190,13 @@
     <form class="entry-form" onsubmit={create}>
       <label>
         Tipo
-        <select bind:value={kind}>
-          <option value="bank">Banco</option>
-          <option value="cash" disabled={!!cash}>Efectivo</option>
-        </select>
+        <Select
+          bind:value={kind}
+          options={[
+            { value: 'bank', label: 'Banco' },
+            { value: 'cash', label: 'Efectivo', disabled: !!cash },
+          ]}
+        />
       </label>
       {#if kind === 'bank'}
         <label>
@@ -226,9 +231,6 @@
           <tr>
             <td colspan="2">
               {a.name}
-              {#if a.balance !== a.amount}
-                <span class="muted">(registraste {formatMoney(a.amount, a.currency)})</span>
-              {/if}
             </td>
             {#if editing === a.id}
               <td class="num" colspan="2">

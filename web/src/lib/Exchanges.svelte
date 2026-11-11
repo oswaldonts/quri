@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Select from './Select.svelte'
   import { tick } from 'svelte'
   import { api, connectionError, failureMessage, type Schemas } from './api'
   import { today } from './dates'
@@ -220,15 +221,11 @@
         </label>
         <label>
           Das
-          <select bind:value={from} disabled={!!editingId}>
-            {#each currencies.codes as c (c)}<option value={c}>{c}</option>{/each}
-          </select>
+          <Select bind:value={from} disabled={!!editingId} options={currencies.codes.map((c) => ({ value: c, label: c }))} />
         </label>
         <label>
           Recibes
-          <select bind:value={to} disabled={!!editingId}>
-            {#each currencies.codes as c (c)}<option value={c}>{c}</option>{/each}
-          </select>
+          <Select bind:value={to} disabled={!!editingId} options={currencies.codes.map((c) => ({ value: c, label: c }))} />
         </label>
         <label>
           Monto que das

@@ -1,4 +1,6 @@
 import { mount } from 'svelte'
+import './ds/tokens.css'
+import './ds/components.css'
 import './app.css'
 import App from './App.svelte'
 
