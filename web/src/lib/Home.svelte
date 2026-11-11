@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Select from './Select.svelte'
   import { onMount } from 'svelte'
   import { api, apiErrorMessage, connectionError, type Schemas } from './api'
   import { monthName, shift, toPeriod } from './dates'
@@ -27,10 +28,11 @@
   const live = $derived(
     settings.closedThrough && shift(settings.closedThrough, 1) > calendarLive ? shift(settings.closedThrough, 1) : calendarLive,
   )
+  const viewTitle = { movements: 'Movimientos', reports: 'Reportes', settings: 'Ajustes' }
   const modes: { id: Mode; label: string }[] = [
     { id: 'past', label: 'Pasado' },
-    { id: 'current', label: 'Actual' },
-    { id: 'plan', label: 'Planificar' },
+    { id: 'current', label: 'Presente' },
+    { id: 'plan', label: 'Futuro' },
   ]
   const inMode: Record<Mode, (p: string) => boolean> = $derived({
     past: (p) => p < live,
@@ -159,6 +161,17 @@
       // not persisted
     }
   }
+  function toggleTheme() {
+    const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'
+    document.documentElement.classList.add('rd-theme-switching')
+    document.documentElement.setAttribute('data-theme', next)
+    try {
+      localStorage.setItem('rd-theme', next)
+    } catch {
+      // not persisted
+    }
+    setTimeout(() => document.documentElement.classList.remove('rd-theme-switching'), 300)
+  }
   const money = (amount: string, currency: Currency) => (hideAmounts ? '••••••' : formatMoney(amount, currency))
 
   $effect(() => {
@@ -203,65 +216,86 @@
 </script>
 
 <header class="bar">
-  <h1>Income Manager</h1>
-  <div class="modes" role="group" aria-label="Vista">
-    <button aria-pressed={view === 'movements'} onclick={() => (view = 'movements')}>Movimientos</button>
-    <button aria-pressed={view === 'reports'} onclick={() => (view = 'reports')}>Reportes</button>
-    <button aria-pressed={view === 'settings'} onclick={() => (view = 'settings')}>Ajustes</button>
+  <span class="brand">Income Manager</span>
+  <div class="end">
+    <button class="icon" aria-label="Cambiar tema" onclick={toggleTheme}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </svg>
+    </button>
+    <button onclick={() => session.logout()}>Salir</button>
   </div>
-  <button onclick={() => session.logout()}>Salir</button>
 </header>
 
+<div class="shell">
+  <aside class="side" aria-label="Navegación">
+    <nav class="side-group" aria-label="Sección">
+      <span class="side-title">Sección</span>
+      <div class="side-links">
+        {#each ['movements', 'reports'] as const as v (v)}
+          <button class="side-link" aria-pressed={view === v} onclick={() => (view = v)}>{viewTitle[v]}</button>
+        {/each}
+      </div>
+    </nav>
+
+    {#if view !== 'settings' && settings.loaded}
+      <div class="side-group" role="group" aria-label="Tiempo">
+        <span class="side-title">Tiempo</span>
+        <div class="side-links">
+          {#each modes as m (m.id)}
+            <button class="side-link" aria-pressed={mode === m.id} onclick={() => setMode(m.id)}>{m.label}</button>
+          {/each}
+        </div>
+        <div class="period-nav">
+          <button aria-label="Mes anterior" disabled={mode === 'current'} onclick={() => go(-1)}>‹</button>
+          <input
+            type="month"
+            bind:value={period}
+            disabled={mode === 'current'}
+            max={mode === 'past' ? shift(live, -1) : undefined}
+            min={mode === 'plan' ? shift(live, 1) : undefined}
+            aria-label="Periodo"
+          />
+          <button aria-label="Mes siguiente" disabled={mode === 'current'} onclick={() => go(1)}>›</button>
+        </div>
+      </div>
+
+      <div class="side-group" role="group" aria-label="Opciones">
+        <span class="side-title">Opciones</span>
+        <label class="check">
+          <input type="checkbox" checked={projected} disabled={mode === 'plan'} onchange={(e) => (includePlanned = e.currentTarget.checked)} />
+          Incluir lo planeado
+        </label>
+        {#if mode === 'current'}
+          <button onclick={closeMonth}>Cerrar mes</button>
+          {#if live > calendarLive}
+            <button class="link neutral" onclick={reopenMonth}>Reabrir {monthName(shift(live, -1))}</button>
+          {/if}
+          {#if closeError}<p class="error" role="alert">{closeError}</p>{/if}
+        {/if}
+      </div>
+    {/if}
+
+    <div class="side-foot">
+      <button class="side-link" aria-pressed={view === 'settings'} onclick={() => (view = 'settings')}>Ajustes</button>
+    </div>
+  </aside>
+
 <main class="page">
+  <header class="page-head">
+    {#if view !== 'settings' && periodPattern.test(period)}
+      <span class="eyebrow">{modes.find((m) => m.id === mode)?.label} · {period}</span>
+      <h1>{viewTitle[view]}</h1>
+    {:else}
+      <span class="eyebrow">Configuración</span>
+      <h1>{viewTitle[view]}</h1>
+    {/if}
+  </header>
 
   {#if view === 'settings'}
     <Settings {period} onchange={() => (currencies.load(), version++)} />
   {:else if settings.loaded}
-  <div class="modes" role="group" aria-label="Modo">
-    {#each modes as m (m.id)}
-      <button aria-pressed={mode === m.id} onclick={() => setMode(m.id)}>{m.label}</button>
-    {/each}
-  </div>
-
-  {#if mode === 'current'}
-    <div class="sheets">
-      <button onclick={closeMonth}>Cerrar mes</button>
-      {#if live > calendarLive}
-        <button class="link neutral" onclick={reopenMonth}>Reabrir {monthName(shift(live, -1))}</button>
-      {/if}
-    </div>
-    {#if closeError}<p class="error" role="alert">{closeError}</p>{/if}
-  {/if}
-
-  <div class="period">
-    {#if mode !== 'current'}
-      <button aria-label="Mes anterior" onclick={() => go(-1)}>‹</button>
-      <input
-        type="month"
-        bind:value={period}
-        max={mode === 'past' ? shift(live, -1) : undefined}
-        min={mode === 'plan' ? shift(live, 1) : undefined}
-        aria-label="Periodo"
-      />
-      <button aria-label="Mes siguiente" onclick={() => go(1)}>›</button>
-    {/if}
-    {#if periodPattern.test(period)}
-      <p class="period-title">
-        Dinero de <strong>{monthName(period)}</strong>, se gasta en {monthName(shift(period, settings.spendOffset))}
-      </p>
-    {/if}
-  </div>
-  {#if mode !== 'plan'}
-    <label class="check">
-      <input type="checkbox" bind:checked={includePlanned} />
-      Incluir lo planeado (ver cómo cambia el Disponible)
-    </label>
-  {/if}
-  {#if mode === 'past'}
-    <p class="muted notice">Estás viendo un periodo pasado: lo que cambies aquí modifica ese mes.</p>
-  {:else if mode === 'plan'}
-    <p class="muted notice">Modo planificación: los movimientos se marcan como planeados y el resumen los incluye.</p>
-  {/if}
 
   {#if valid}
     <div class="sheets">
@@ -277,10 +311,13 @@
         <button aria-label="Moneda siguiente" onclick={() => step(1)}>›</button>
       {/if}
       {#if sheets.length < currencies.codes.length}
-        <select aria-label="Agregar moneda" value="" onchange={(e) => (addSheet(e.currentTarget.value), (e.currentTarget.value = ''))}>
-          <option value="">+ Moneda</option>
-          {#each currencies.codes.filter((c) => !sheets.includes(c)) as c (c)}<option value={c}>{c}</option>{/each}
-        </select>
+        <Select
+          value=""
+          label="Agregar moneda"
+          placeholder="+ Moneda"
+          onchange={(v) => addSheet(String(v))}
+          options={currencies.codes.filter((c) => !sheets.includes(c)).map((c) => ({ value: c, label: c }))}
+        />
       {/if}
     </div>
   {/if}
@@ -314,14 +351,10 @@
                 </button>
               </div>
               <p class="big" class:negative={isNegative(avail)}>{money(avail, c.currency)}</p>
-              {#if isZero(cashHere)}<p class="detail">Arrastrado + Ingresos − Gastado</p>{/if}
               <dl class="mini">
                 <div>
                   <dt>Arrastrado</dt>
                   <dd>{money(c.carried_over, c.currency)}</dd>
-                  {#if c.carried_from}
-                    <dd class="detail">{c.carried_from === 'real' ? 'Saldo real' : 'Disponible'} de {shift(period, -1)}</dd>
-                  {/if}
                 </div>
                 <div>
                   <dt>Gastado</dt>
@@ -351,43 +384,6 @@
               </div>
             </div>
           </div>
-
-          {#if c.expenses?.length}
-            <section class="panel" aria-labelledby="categories-summary">
-            <h2 id="categories-summary">Gasto por categoría</h2>
-            <table class="fixed">
-              <colgroup><col class="c-date" /><col /><col class="c-amount" /><col class="c-half" /><col class="c-half" /></colgroup>
-              <thead>
-                <tr>
-                  <th colspan="2">Categoría</th>
-                  <th class="num">Gastado</th>
-                  <th class="num">Presupuesto</th>
-                  <th class="num">Restante</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each c.expenses as e (e.category_id)}
-                  <tr>
-                    <td colspan="2">
-                      {e.name}
-                      {#if e.budget && Number(e.budget) > 0}
-                        {@const pct = Math.min(100, Math.round((Number(e.spent) / Number(e.budget)) * 100))}
-                        <span class="mini-bar" role="img" aria-label="{pct}% del presupuesto">
-                          <span class="bar-fill" class:over={Number(e.spent) > Number(e.budget)} style="width: {pct}%"></span>
-                        </span>
-                      {/if}
-                    </td>
-                    <td class="num">{money(e.spent, c.currency)}</td>
-                    <td class="num">{e.budget ? money(e.budget, c.currency) : '—'}</td>
-                    <td class="num" class:negative={e.remaining !== undefined && isNegative(e.remaining)}>
-                      {e.remaining ? money(e.remaining, c.currency) : '—'}
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-            </section>
-          {/if}
         </section>
       {:else}
         <p class="muted">Sin movimientos en {sheet} en este periodo.</p>
@@ -412,3 +408,4 @@
   {/if}
   {/if}
 </main>
+</div>
