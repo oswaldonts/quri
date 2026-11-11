@@ -946,3 +946,78 @@ tbody tr:hover td {
 .rd-combo__list li {
   font-size: var(--rd-fs-xs);
 }
+
+/* Expenses by category: Runner DS accordion; the summary carries name, share of the total and amount */
+.categories summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(4rem, 10rem) auto auto;
+  gap: 1rem;
+}
+
+.categories .cat-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.categories .cat-share {
+  height: 0.35rem;
+  background: var(--surface-2);
+}
+
+.categories .cat-share .bar-fill {
+  display: block;
+  height: 100%;
+}
+
+.categories .cat-total {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 7rem;
+}
+
+@media (max-width: 39.99rem) {
+  .categories summary {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .categories .cat-share {
+    display: none;
+  }
+}
+
+/* Accordions inside a panel: flat rows, no second box around the table */
+.panel .rd-accordion {
+  border: 0;
+  background: transparent;
+}
+
+.panel .rd-accordion summary {
+  padding-inline: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel .rd-accordion details[open] > summary {
+  background: transparent;
+}
+
+.panel .rd-accordion summary:hover {
+  background: var(--rd-accent-a05);
+}
+
+.panel .rd-accordion__body {
+  padding: 0;
+  border-top: 0;
+}
+
+.panel .rd-accordion__body table {
+  margin: 0;
+}
+
+.panel .rd-accordion__body tbody tr:last-child td {
+  border-bottom: 1px solid var(--border);
+}
+
+.categories .rd-accordion__body {
+  padding: 0;
+}

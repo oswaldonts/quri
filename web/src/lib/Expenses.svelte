@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Select from './Select.svelte'
   import { tick } from 'svelte'
   import { api, connectionError, failureMessage, type Schemas } from './api'
   import { today } from './dates'
@@ -263,6 +264,13 @@
       .map(([id, items]) => ({ id, name: categoryName(id), items }))
       .sort((a, b) => compareAmounts(counted(b.items), counted(a.items)) || a.name.localeCompare(b.name))
   })
+
+  const grandTotal = $derived(sumAmounts(expenses.filter((e) => !e.disabled).map((e) => e.amount)))
+  // Width of a category's bar against everything spent (display only).
+  const share = (amount: string, all: string) => {
+    const t = Number(all)
+    return t > 0 ? Math.round((Number(amount) / t) * 100) : 0
+  }
 </script>
 
 {#snippet row(e: Schemas['Expense'], fallback: string)}
@@ -311,9 +319,7 @@
       <div class="row wide">
         <label>
           Categoría
-          <select bind:value={categoryId} required>
-            {#each choosable as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
-          </select>
+          <Select bind:value={categoryId} options={choosable.map((c) => ({ value: c.id, label: c.name }))} />
         </label>
         <label class="grow">
           Descripción
@@ -331,10 +337,10 @@
       <div class="row wide">
         <label>
           Pagado desde
-          <select bind:value={accountId}>
-            <option value="">Sin cuenta</option>
-            {#each choosableAccounts as a (a.id)}<option value={a.id}>{a.name}</option>{/each}
-          </select>
+          <Select
+            bind:value={accountId}
+            options={[{ value: '', label: 'Sin cuenta' }, ...choosableAccounts.map((a) => ({ value: a.id, label: a.name }))]}
+          />
         </label>
         <label>
           Etiquetas (separadas por coma)
@@ -375,26 +381,38 @@
   {#if loadError}
     <p class="error" role="alert">{loadError}</p>
   {:else if expenses.length}
-    {#each groups as c (c.id)}
-      <section class="category" aria-label={c.name}>
-        <h3>{c.name} <span class="muted">({c.items.length})</span></h3>
-        <table class="list">
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Detalle</th>
-              <th class="num">Monto</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each c.items as e (e.id)}
-              {@render row(e, c.name)}
-            {/each}
-          </tbody>
-        </table>
-      </section>
-    {/each}
+    <div class="rd-accordion categories">
+      {#each groups as c, i (c.id)}
+        {@const counted = c.items.filter((e) => !e.disabled)}
+        {@const total = sumAmounts(counted.map((e) => e.amount))}
+        <details open={i === 0}>
+          <summary>
+            <span class="cat-name">{c.name} <span class="muted">({c.items.length})</span></span>
+            <span class="cat-share" aria-hidden="true">
+              <span class="bar-fill" style:width="{share(total, grandTotal)}%"></span>
+            </span>
+            <span class="cat-total">{formatMoney(total, currency)}</span>
+          </summary>
+          <div class="rd-accordion__body">
+            <table class="list">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Detalle</th>
+                  <th class="num">Monto</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each c.items as e (e.id)}
+                  {@render row(e, c.name)}
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      {/each}
+    </div>
   {:else}
     <p class="muted">Sin gastos en {currency} en este periodo.</p>
   {/if}
