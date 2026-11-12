@@ -31,7 +31,7 @@ func TestSummary(t *testing.T) {
 	var s Summary
 	decode(t, rec, &s)
 
-	if s.Period != "2026-07" || s.SpendMonth != "2026-07" || len(s.Currencies) != 2 {
+	if s.Period != "2026-07" || len(s.Currencies) != 2 {
 		t.Fatalf("summary = %+v", s)
 	}
 	pen, usd := s.Currencies[0], s.Currencies[1]

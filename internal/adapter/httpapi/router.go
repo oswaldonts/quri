@@ -22,8 +22,7 @@ const (
 
 const apiDescription = `Personal income and expense manager.
 
-Budgets are organized by **period**: the month the money was earned (YYYY-MM).
-That money is spent the same month or the following one, depending on the spend_offset setting (spend_month).
+Budgets are organized by **period**: a month (YYYY-MM).
 
 **Amounts** are decimal strings ("1330.00"), never JSON numbers, to avoid floating
 point rounding. Currencies are ISO 4217 codes.
@@ -64,13 +63,13 @@ func NewRouter(s Services, logger *slog.Logger) http.Handler {
 	registerHealth(api)
 	registerAuth(api, s.Auth)
 	registerCategories(api, s.Categories)
-	registerIncomes(api, s.Incomes, s.Settings)
-	registerIncomeEdits(api, s.Incomes, s.Settings)
+	registerIncomes(api, s.Incomes)
+	registerIncomeEdits(api, s.Incomes)
 	registerExpenses(api, s.Expenses)
 	registerExpenseBatch(api, s.Expenses)
 	registerExpenseEdits(api, s.Expenses)
 	registerBalances(api, s.Balances)
-	registerSummary(api, s.Summaries, s.Settings)
+	registerSummary(api, s.Summaries)
 	registerAvailable(api, s.Summaries)
 	registerTrends(api, s.Summaries)
 	registerBudgets(api, s.Budgets)

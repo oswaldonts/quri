@@ -22,7 +22,6 @@ type SummaryService interface {
 // Summary is the overview of a period.
 type Summary struct {
 	Period     string            `json:"period" example:"2026-07"`
-	SpendMonth string            `json:"spend_month" example:"2026-08"`
 	Currencies []CurrencySummary `json:"currencies" doc:"One block per currency with incomes, expenses or a real balance."`
 }
 
@@ -97,10 +96,9 @@ type SummaryOutput struct {
 	Body Summary
 }
 
-func toSummary(s summary.Summary, offset int) Summary {
+func toSummary(s summary.Summary) Summary {
 	out := Summary{
 		Period:     s.Period.String(),
-		SpendMonth: spendMonth(s.Period, offset),
 		Currencies: make([]CurrencySummary, 0, len(s.Currencies)),
 	}
 	for _, c := range s.Currencies {
@@ -167,8 +165,7 @@ func toCurrencySummary(c summary.CurrencySummary) CurrencySummary {
 
 // PeriodCurrencySummary is the summary of one currency, with its period.
 type PeriodCurrencySummary struct {
-	Period     string `json:"period" example:"2026-08"`
-	SpendMonth string `json:"spend_month" example:"2026-09"`
+	Period string `json:"period" example:"2026-08"`
 	CurrencySummary
 }
 
@@ -198,7 +195,7 @@ func optional(m *money.Money) string {
 	return m.String()
 }
 
-func registerSummary(api huma.API, summaries SummaryService, settings SettingsService) {
+func registerSummary(api huma.API, summaries SummaryService) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-currency-summary",
 		Method:      http.MethodGet,
@@ -213,13 +210,8 @@ func registerSummary(api huma.API, summaries SummaryService, settings SettingsSe
 		if err != nil {
 			return nil, toHTTPError(ctx, "get currency summary", err)
 		}
-		offset, err := settings.SpendOffset(ctx)
-		if err != nil {
-			return nil, toHTTPError(ctx, "get settings", err)
-		}
 		return &CurrencySummaryOutput{Body: PeriodCurrencySummary{
 			Period:          p.String(),
-			SpendMonth:      spendMonth(p, offset),
 			CurrencySummary: toCurrencySummary(cs),
 		}}, nil
 	})
@@ -238,11 +230,7 @@ func registerSummary(api huma.API, summaries SummaryService, settings SettingsSe
 		if err != nil {
 			return nil, toHTTPError(ctx, "get summary", err)
 		}
-		offset, err := settings.SpendOffset(ctx)
-		if err != nil {
-			return nil, toHTTPError(ctx, "get settings", err)
-		}
-		return &SummaryOutput{Body: toSummary(s, offset)}, nil
+		return &SummaryOutput{Body: toSummary(s)}, nil
 	})
 }
 

@@ -114,7 +114,6 @@ type Rate struct {
 
 type Setting struct {
 	ID              int64
-	SpendOffset     int64
 	DefaultCurrency sql.NullString
 	ClosedThrough   sql.NullString
 }

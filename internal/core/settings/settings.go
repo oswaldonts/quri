@@ -16,9 +16,6 @@ var ErrInvalidInput = errors.New("invalid input")
 
 // Settings are the preferences of the installation.
 type Settings struct {
-	// SpendOffset is how many months after being earned the money of a period is spent:
-	// 0 spends it the same month, 1 the following one (a salary paid at month end).
-	SpendOffset int
 	// DefaultCurrency is the currency the app opens in; empty means the first one in the list.
 	DefaultCurrency string
 	// ClosedThrough is the last period the user closed (YYYY-MM, empty: none). The work moves on
@@ -54,7 +51,6 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 
 // UpdateInput carries the settings to change; nil fields stay as they are.
 type UpdateInput struct {
-	SpendOffset *int
 	// DefaultCurrency "" clears the default.
 	DefaultCurrency *string
 	// ClosedThrough "" clears it (nothing is closed ahead of the calendar).
@@ -66,12 +62,6 @@ func (s *Service) Update(ctx context.Context, in UpdateInput) (Settings, error) 
 	cur, err := s.Get(ctx)
 	if err != nil {
 		return Settings{}, err
-	}
-	if in.SpendOffset != nil {
-		if *in.SpendOffset < 0 || *in.SpendOffset > 1 {
-			return Settings{}, fmt.Errorf("%w: spend_offset %d (want 0 or 1)", ErrInvalidInput, *in.SpendOffset)
-		}
-		cur.SpendOffset = *in.SpendOffset
 	}
 	if in.DefaultCurrency != nil {
 		cur.DefaultCurrency = ""
@@ -100,10 +90,4 @@ func (s *Service) Update(ctx context.Context, in UpdateInput) (Settings, error) 
 		return Settings{}, fmt.Errorf("save settings: %w", err)
 	}
 	return cur, nil
-}
-
-// SpendOffset returns just the spend offset.
-func (s *Service) SpendOffset(ctx context.Context) (int, error) {
-	cur, err := s.Get(ctx)
-	return cur.SpendOffset, err
 }

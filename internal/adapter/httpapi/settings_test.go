@@ -5,32 +5,6 @@ import (
 	"testing"
 )
 
-func TestSettingsSpendOffset(t *testing.T) {
-	h := newTestRouter(t)
-
-	rec := send(h, http.MethodGet, "/settings", "")
-	var s Settings
-	decode(t, rec, &s)
-	if rec.Code != http.StatusOK || s.SpendOffset != 0 {
-		t.Fatalf("fresh settings = %d %+v, want offset 0", rec.Code, s)
-	}
-
-	rec = send(h, http.MethodPatch, "/settings", `{"spend_offset": 1}`)
-	decode(t, rec, &s)
-	if rec.Code != http.StatusOK || s.SpendOffset != 1 {
-		t.Fatalf("patched settings = %d %+v, want offset 1", rec.Code, s)
-	}
-
-	rec = send(h, http.MethodGet, "/periods/2026-12/summary", "")
-	var sum Summary
-	decode(t, rec, &sum)
-	if sum.SpendMonth != "2027-01" {
-		t.Errorf("spend_month = %s, want 2027-01 with offset 1", sum.SpendMonth)
-	}
-
-	assertProblem(t, send(h, http.MethodPatch, "/settings", `{"spend_offset": 2}`), http.StatusUnprocessableEntity)
-}
-
 func TestDefaultCurrencyAndOrder(t *testing.T) {
 	h := newTestRouter(t)
 
@@ -75,7 +49,7 @@ func TestClosedThrough(t *testing.T) {
 	if s.ClosedThrough != "2026-10" {
 		t.Errorf("closed_through = %q, want 2026-10", s.ClosedThrough)
 	}
-	decode(t, send(h, http.MethodPatch, "/settings", `{"spend_offset": 1}`), &s)
+	decode(t, send(h, http.MethodPatch, "/settings", `{"default_currency": ""}`), &s)
 	if s.ClosedThrough != "2026-10" {
 		t.Errorf("other settings cleared closed_through: %q", s.ClosedThrough)
 	}

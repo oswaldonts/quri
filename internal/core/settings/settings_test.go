@@ -24,23 +24,6 @@ type fakeRepo struct{ s Settings }
 func (f *fakeRepo) Get(context.Context) (Settings, error)    { return f.s, nil }
 func (f *fakeRepo) Save(_ context.Context, s Settings) error { f.s = s; return nil }
 
-func TestUpdateSpendOffset(t *testing.T) {
-	svc := NewService(&fakeRepo{s: Settings{SpendOffset: 1}}, onlyPEN{})
-	ctx := context.Background()
-	zero, two := 0, 2
-
-	got, err := svc.Update(ctx, UpdateInput{SpendOffset: &zero})
-	if err != nil || got.SpendOffset != 0 {
-		t.Fatalf("Update(0) = %+v, %v", got, err)
-	}
-	if got, _ := svc.Update(ctx, UpdateInput{}); got.SpendOffset != 0 {
-		t.Errorf("an empty update changed the offset to %d", got.SpendOffset)
-	}
-	if _, err := svc.Update(ctx, UpdateInput{SpendOffset: &two}); !errors.Is(err, ErrInvalidInput) {
-		t.Errorf("Update(2) error = %v, want ErrInvalidInput", err)
-	}
-}
-
 func TestUpdateDefaultCurrency(t *testing.T) {
 	svc := NewService(&fakeRepo{}, onlyPEN{})
 	ctx := context.Background()

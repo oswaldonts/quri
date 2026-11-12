@@ -13,8 +13,7 @@ var ErrInvalidPeriod = errors.New("invalid period")
 // layout is Go's reference date (2006-01-02) written in the YYYY-MM format.
 const layout = "2006-01"
 
-// Period identifies a budget by the month the money was earned (e.g. 2026-07).
-// That money is spent during the following month (see SpendMonth).
+// Period identifies a budget by its month (e.g. 2026-07).
 type Period struct {
 	year  int
 	month time.Month
