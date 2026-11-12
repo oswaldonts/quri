@@ -1,13 +1,15 @@
 <script lang="ts">
   import { api, apiErrorMessage, connectionError, type Schemas } from './api'
+  import Donut from './Donut.svelte'
   import { shift } from './dates'
   import { groupNames } from './groups'
   import { compareAmounts, formatMoney, sumAmounts, type Currency } from './money'
 
-  let { period, currency, projected, summary }: {
+  let { period, currency, projected, months, summary }: {
     period: string
     currency: Currency
     projected: boolean
+    months: number
     summary: Schemas['CurrencySummary'] | undefined
   } = $props()
 
@@ -17,8 +19,6 @@
     return m > 0 ? Math.max(2, Math.round((Number(amount) / m) * 100)) : 0
   }
 
-  const ranges = [3, 6, 12]
-  let months = $state(6)
   let trends = $state<Schemas['Trends'] | null>(null)
   let error = $state('')
   let filter = $state('')
@@ -43,13 +43,13 @@
     return () => controller.abort()
   })
 
-  type Row = { kind: 'Categoría' | 'Etiqueta'; name: string; total: string; average: string; series: string[] }
+  type Row = { name: string; total: string }
   const rows = $derived.by<Row[]>(() => {
     if (!trends) return []
     const q = filter.trim().toLowerCase()
     return [
-      ...(trends.expenses ?? []).map((e) => ({ kind: 'Categoría' as const, name: e.name, total: e.total, average: e.average, series: e.series ?? [] })),
-      ...(trends.tags ?? []).map((t) => ({ kind: 'Etiqueta' as const, name: `#${t.tag}`, total: t.total, average: t.average, series: t.series ?? [] })),
+      ...(trends.expenses ?? []).map((e) => ({ name: e.name, total: e.total })),
+      ...(trends.tags ?? []).map((t) => ({ name: `#${t.tag}`, total: t.total })),
     ]
       .filter((r) => compareAmounts(r.total, '0') > 0 && r.name.toLowerCase().includes(q))
       .sort((a, b) => compareAmounts(b.total, a.total))
@@ -60,88 +60,28 @@
   const tags = $derived(summary?.tags ?? [])
   const items = $derived(summary?.top_items ?? [])
 
-  const colors = ['var(--rd-accent-fill)', 'var(--rd-info)', 'var(--rd-warning)', 'var(--rd-success)', 'var(--rd-danger)', 'var(--rd-text-dim)']
+  // The DS has five series colours; past the fifth they repeat.
+  const series = (i: number) => (i % 5) + 1
   const groupsTotal = $derived(sumAmounts(groups.map((g) => g.spent)))
   const percent = (amount: string, total: string) => (Number(total) > 0 ? Math.round((Number(amount) / Number(total)) * 100) : 0)
+  const groupName = (g: string) => groupNames[g] ?? g
+  const segments = $derived(
+    groups.map((g) => ({
+      value: Number(g.spent),
+      label: groupName(g.group),
+      text: `${groupName(g.group)}: ${formatMoney(g.spent, currency)} (${percent(g.spent, groupsTotal)}%)`,
+    })),
+  )
+  let activeGroup = $state(-1)
 
   const periods = $derived(trends?.periods ?? [])
   const peak = $derived(
     periods.reduce((m, p) => Math.max(m, Number(p.income), Number(p.spent)), 0),
   )
   const height = (amount: string) => (peak > 0 ? Math.max(1, Math.round((Number(amount) / peak) * 100)) : 0)
-  const rowPeak = (series: string[]) => series.reduce((m, v) => Math.max(m, Number(v)), 0)
 </script>
 
-<div class="reports">
-  <div class="reports-head">
-    <h2 id="reports-title">Reportes · {period}</h2>
-    <div class="segmented" role="group" aria-label="Meses de evolución">
-      {#each ranges as r (r)}
-        <button aria-pressed={months === r} onclick={() => (months = r)}>{r} meses</button>
-      {/each}
-    </div>
-  </div>
-
-  {#if !summary}
-    <section class="panel">
-      <p class="muted">Sin movimientos en {currency} en este periodo.</p>
-    </section>
-  {:else}
-    <div class="reports-grid">
-      {#if groups.length}
-        <section class="panel wide" aria-labelledby="by-group">
-          <h3 id="by-group">Por grupo</h3>
-          <div class="stack" role="img" aria-label="Reparto del gasto por grupo">
-            {#each groups as g, i (g.group)}
-              <span style:flex-grow={Number(g.spent)} style:background={colors[i % colors.length]} title={groupNames[g.group] ?? g.group}></span>
-            {/each}
-          </div>
-          <ul class="legend">
-            {#each groups as g, i (g.group)}
-              <li>
-                <i style:background={colors[i % colors.length]}></i>
-                <span>{groupNames[g.group] ?? g.group}</span>
-                <span class="muted">{percent(g.spent, groupsTotal)}%</span>
-                <span class="num">{formatMoney(g.spent, currency)}</span>
-              </li>
-            {/each}
-          </ul>
-        </section>
-      {/if}
-
-      {#if tags.length}
-        <section class="panel" aria-labelledby="by-tag">
-          <h3 id="by-tag">Por etiqueta</h3>
-          <ul class="tag-list">
-            {#each tags as t (t.tag)}
-              <li style:--w="{share(t.spent, tags[0].spent)}%">
-                <b>#{t.tag}</b>
-                <span class="muted">×{t.count}</span>
-                <span class="num">{formatMoney(t.spent, currency)}</span>
-              </li>
-            {/each}
-          </ul>
-        </section>
-      {/if}
-
-      {#if items.length}
-        <section class="panel" aria-labelledby="top-items">
-          <h3 id="top-items">Lo que más se gastó</h3>
-          <ol class="ranked">
-            {#each items as i, n (i.description)}
-              <li>
-                <span class="rank">{String(n + 1).padStart(2, '0')}</span>
-                <span class="what">{i.description || 'Sin descripción'} <span class="muted">({i.count})</span></span>
-                <span class="num">{formatMoney(i.spent, currency)}</span>
-                <span class="bar-track"><span class="bar-fill" style:width="{share(i.spent, items[0].spent)}%"></span></span>
-              </li>
-            {/each}
-          </ol>
-        </section>
-      {/if}
-    </div>
-  {/if}
-
+{#snippet evolution()}
   <section class="panel" aria-labelledby="evolution">
     <div class="panel-head">
       <h3 id="evolution">Evolución</h3>
@@ -193,6 +133,74 @@
       <p class="muted">Cargando…</p>
     {/if}
   </section>
+{/snippet}
+
+<div class="reports">
+  {#if !summary}
+    <section class="panel">
+      <p class="muted">Sin movimientos en {currency} en este periodo.</p>
+    </section>
+    {@render evolution()}
+  {:else}
+    <div class="reports-grid">
+      {#if groups.length}
+        <section class="panel panel--center" aria-labelledby="by-group">
+          <h3 id="by-group">Por grupo</h3>
+          <div class="donut-row">
+            <Donut {segments} {series} bind:active={activeGroup} label="Reparto del gasto por grupo" />
+            <ul class="rd-legend rd-legend--bars">
+              {#each groups as g, i (g.group)}
+                <li
+                  class="rd-series-{series(i)}"
+                  class:is-active={activeGroup === i}
+                  onmouseenter={() => (activeGroup = i)}
+                  onmouseleave={() => (activeGroup = -1)}
+                >
+                  <i></i>
+                  <span>{groupName(g.group)}</span>
+                  <span class="muted">{percent(g.spent, groupsTotal)}%</span>
+                  <span class="num">{formatMoney(g.spent, currency)}</span>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        </section>
+      {/if}
+
+      {#if items.length}
+        <section class="panel" aria-labelledby="top-items">
+          <h3 id="top-items">Lo que más se gastó</h3>
+          <ul class="rd-bars">
+            {#each items as i (i.description)}
+              <li>
+                <span class="rd-bars__label">{i.description || 'Sin descripción'} ({i.count})</span>
+                <span class="rd-bar"><span class="rd-bar__fill" style="--value:{share(i.spent, items[0].spent)}"></span></span>
+                <span class="rd-bars__value">{formatMoney(i.spent, currency)}</span>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
+
+      {@render evolution()}
+
+      {#if tags.length}
+        <section class="panel" aria-labelledby="by-tag">
+          <h3 id="by-tag">Por etiqueta</h3>
+          <ul class="tag-list">
+            {#each tags as t (t.tag)}
+              <li style:--w="{share(t.spent, tags[0].spent)}%">
+                <b>#{t.tag}</b>
+                <span class="muted">×{t.count}</span>
+                <span class="num">{formatMoney(t.spent, currency)}</span>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
+    </div>
+  {/if}
+
 
   <section class="panel" aria-labelledby="search">
     <h3 id="search">Buscar categoría o etiqueta</h3>
@@ -208,26 +216,13 @@
               <tr>
                 <th>Elemento</th>
                 <th class="num">Total</th>
-                <th class="num">Promedio</th>
-                <th>Últimos {periods.length} meses</th>
               </tr>
             </thead>
             <tbody>
-              {#each rows as r (r.kind + r.name)}
+              {#each rows as r (r.name)}
                 <tr>
-                  <td>{r.name} <span class="muted">{r.kind === 'Etiqueta' ? '' : '· cat.'}</span></td>
+                  <td>{r.name}</td>
                   <td class="num">{formatMoney(r.total, currency)}</td>
-                  <td class="num">{formatMoney(r.average, currency)}</td>
-                  <td>
-                    <span class="spark">
-                      {#each r.series as v, i (i)}
-                        <i
-                          style:height="{Number(v) > 0 ? Math.max(8, Math.round((Number(v) / rowPeak(r.series)) * 100)) : 0}%"
-                          title="{periods[i]?.period}: {formatMoney(v, currency)}"
-                        ></i>
-                      {/each}
-                    </span>
-                  </td>
                 </tr>
               {/each}
             </tbody>
