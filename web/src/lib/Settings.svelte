@@ -18,7 +18,6 @@
   ]
   let tab = $state<Tab>('general')
 
-  let offsetError = $state('')
   let defaultError = $state('')
 
   async function changeDefault(code: string | number) {
@@ -31,11 +30,6 @@
     if (target < 0 || target >= codes.length) return
     ;[codes[index], codes[target]] = [codes[target], codes[index]]
     error = await currencies.reorder(codes).catch(() => connectionError)
-  }
-
-  async function changeOffset(raw: string | number) {
-    const value = Number(raw)
-    offsetError = await settings.setSpendOffset(value).catch(() => connectionError)
   }
 
   let adding = $state(false)
@@ -194,30 +188,6 @@
   </label>
   {#if defaultError}<p class="error" role="alert">{defaultError}</p>{/if}
   <p class="muted">Sin moneda por defecto se abre la última que usaste. El orden de las monedas se cambia en la pestaña Monedas.</p>
-</section>
-
-<section class="panel" aria-labelledby="spend-title">
-  <div class="panel-head">
-    <h2 id="spend-title">Cuándo se gasta lo que ganas</h2>
-  </div>
-  <label>
-    El dinero de un mes se gasta
-    <Select
-      value={settings.spendOffset}
-      onchange={changeOffset}
-      label="Mes en que se gasta"
-      options={[
-        { value: 0, label: 'ese mismo mes' },
-        { value: 1, label: 'el mes siguiente' },
-      ]}
-    />
-  </label>
-  {#if offsetError}<p class="error" role="alert">{offsetError}</p>{/if}
-  <p class="muted">
-    Si te pagan a fin de mes y gastas ese sueldo el mes siguiente, elige «el mes siguiente». Es una preferencia de
-    lectura: no cambia nada de lo registrado, solo en qué mes se dice que se gasta cada periodo. Configúralo al
-    empezar; cambiarlo después reinterpreta los periodos ya cargados.
-  </p>
 </section>
 
 {:else}

@@ -81,6 +81,13 @@
   --rd-border-w: 1px;
 
   /* --- Efectos ----------------------------------------------------------- */
+  /* Series para gráficas (barras, columnas, leyendas). 1 sigue al color de marca. */
+  --rd-series-1: var(--rd-accent-fill);
+  --rd-series-2: var(--rd-warning);
+  --rd-series-3: var(--rd-info);
+  --rd-series-4: #a78bfa;
+  --rd-series-5: #8a8a9c;
+
   --rd-glow:        0 0 0 1px var(--rd-accent), 0 0 18px rgb(192 254 4 / .35);
   --rd-glow-soft:   0 0 24px rgb(192 254 4 / .15);
   --rd-glow-danger: 0 0 0 1px var(--rd-danger), 0 0 18px rgb(242 71 35 / .35);
@@ -101,6 +108,9 @@
   /* --- Layout ------------------------------------------------------------ */
   --rd-container: 72rem;
   --rd-gutter: clamp(1rem, 4vw, 2rem);
+  --rd-control-h: 2.5rem;   /* altura común de controles en fila (.rd-controls) */
+  --rd-sidebar-w: 16rem;
+  --rd-sidebar-w-collapsed: 4.25rem;
 }
 
 /* Variante de acento: cambia el color firma sin tocar componentes.
@@ -164,6 +174,8 @@
   /* Resaltado de hover: tinte lima + borde lima oscuro (el activo/seleccionado es lima sólido) */
   --rd-hover-bg: color-mix(in srgb, var(--rd-accent-fill) 40%, var(--rd-surface));
   --rd-hover-bd: var(--rd-accent-dim);
+  --rd-series-4: #6d4fd6;
+  --rd-series-5: #6b6b7a;
 
   /* Halo en anillo (sin desenfoque): un glow lima difuminado no se ve sobre blanco, y una sombra desplazada se lee como un fondo extra */
   --rd-glow:        0 0 0 1px var(--rd-accent), 0 0 0 4px var(--rd-accent-a25);

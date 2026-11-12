@@ -1,5 +1,7 @@
 <script lang="ts">
+  import Logo from './Logo.svelte'
   import Select from './Select.svelte'
+  import MonthPicker from './MonthPicker.svelte'
   import { onMount } from 'svelte'
   import { api, apiErrorMessage, connectionError, type Schemas } from './api'
   import { monthName, shift, toPeriod } from './dates'
@@ -16,23 +18,21 @@
 
   const periodPattern = /^\d{4}-\d{2}$/
 
-  // The money earned in a month is spent spendOffset months later (Ajustes), so the period that
-  // is "live" is that many months back: with 1, in October the user works with September's money.
+  // The live period is the calendar month, or the one after the last closed month when that is later.
   //   past:    periods before the live one (fix what was registered in the wrong place)
   //   current: only the live period (the default)
   //   plan:    this month and later, to plan what comes next
   type Mode = 'past' | 'current' | 'plan'
   const thisMonth = toPeriod(new Date())
-  const calendarLive = $derived(shift(thisMonth, -settings.spendOffset))
   // Closing a month moves on to the next one even if the calendar hasn't got there yet.
   const live = $derived(
-    settings.closedThrough && shift(settings.closedThrough, 1) > calendarLive ? shift(settings.closedThrough, 1) : calendarLive,
+    settings.closedThrough && shift(settings.closedThrough, 1) > thisMonth ? shift(settings.closedThrough, 1) : thisMonth,
   )
   const viewTitle = { movements: 'Movimientos', reports: 'Reportes', settings: 'Ajustes' }
-  const modes: { id: Mode; label: string }[] = [
-    { id: 'past', label: 'Pasado' },
-    { id: 'current', label: 'Presente' },
-    { id: 'plan', label: 'Futuro' },
+  const modes: { id: Mode; label: string; icon: string }[] = [
+    { id: 'past', label: 'Pasado', icon: '<svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg>' },
+    { id: 'current', label: 'Presente', icon: '<svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>' },
+    { id: 'plan', label: 'Futuro', icon: '<svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>' },
   ]
   const inMode: Record<Mode, (p: string) => boolean> = $derived({
     past: (p) => p < live,
@@ -40,6 +40,22 @@
     plan: (p) => p > live,
   })
   const startOf: Record<Mode, string> = $derived({ past: shift(live, -1), current: live, plan: shift(live, 1) })
+
+  let collapsed = $state(false)
+  let drawer = $state(false)
+  try {
+    collapsed = localStorage.getItem('rd-sidebar-app') === '1'
+  } catch {
+    // not persisted
+  }
+  function toggleCollapsed() {
+    collapsed = !collapsed
+    try {
+      localStorage.setItem('rd-sidebar-app', collapsed ? '1' : '0')
+    } catch {
+      // not persisted
+    }
+  }
 
   let mode = $state<Mode>('current')
   let view = $state<'movements' | 'reports' | 'settings'>('movements')
@@ -70,17 +86,21 @@
   function setMode(next: Mode) {
     mode = next
     period = startOf[next]
+    if (view === 'settings') view = 'movements'
+    drawer = false
   }
 
-  // Moves one month, staying inside the mode's range.
-  function go(months: number) {
-    const next = shift(period, months)
-    if (inMode[mode](next)) period = next
+  function showView(next: typeof view) {
+    view = next
+    drawer = false
   }
 
   // One sheet per currency: the whole screen shows a single currency at a time. A sheet exists
   // when the period has movements in it or the user added it (e.g. the currency of a trip).
   let sheet = $state<Currency>('')
+  // Months the reports look back (Evolución and Buscar); the control sits next to the currency tabs.
+  const monthRanges = [3, 6, 12]
+  let months = $state(6)
   let added = $state<Currency[]>([])
   const sheets = $derived.by<Currency[]>(() => {
     const present = new Set<string>([...added, ...(summary?.currencies ?? []).map((c) => c.currency), sheet])
@@ -215,73 +235,77 @@
   })
 </script>
 
-<header class="bar">
-  <span class="brand">Income Manager</span>
-  <div class="end">
-    <button class="icon" aria-label="Cambiar tema" onclick={toggleTheme}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-      </svg>
-    </button>
-    <button onclick={() => session.logout()}>Salir</button>
-  </div>
-</header>
+<svelte:window onkeydown={(e) => e.key === 'Escape' && (drawer = false)} />
 
-<div class="shell">
-  <aside class="side" aria-label="Navegación">
-    <nav class="side-group" aria-label="Sección">
-      <span class="side-title">Sección</span>
-      <div class="side-links">
-        {#each ['movements', 'reports'] as const as v (v)}
-          <button class="side-link" aria-pressed={view === v} onclick={() => (view = v)}>{viewTitle[v]}</button>
+<div class="rd-shell" class:is-collapsed={collapsed} class:is-open={drawer}>
+  <aside class="rd-sidebar" id="app-sidebar" aria-label="Navegación">
+    <div class="rd-sidebar__head">
+      <span class="rd-sidebar__brand"><Logo size={18} /><span class="rd-sidebar__label">Quri</span></span>
+      <button class="rd-btn rd-btn--ghost rd-btn--sm rd-sidebar__toggle" aria-expanded={!collapsed} aria-label={collapsed ? 'Expandir menú' : 'Contraer menú'} onclick={toggleCollapsed}>
+        <svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+      </button>
+    </div>
+
+    <nav class="rd-sidebar__nav" aria-label="Periodo">
+      {#if settings.loaded}
+        <p class="rd-sidebar__group">Tiempo</p>
+        {#each modes as m (m.id)}
+          <button class="rd-sidebar__link" class:is-active={view !== 'settings' && mode === m.id} aria-current={view !== 'settings' && mode === m.id ? 'page' : undefined} onclick={() => setMode(m.id)}>
+            {@html m.icon}<span class="rd-sidebar__label">{m.label}</span>
+          </button>
         {/each}
+
+        <div class="side-extra">
+          <MonthPicker
+            bind:value={period}
+            locked={mode === 'current'}
+            today={mode === 'current' ? undefined : thisMonth}
+            max={mode === 'past' ? shift(live, -1) : undefined}
+            min={mode === 'plan' ? shift(live, 1) : undefined}
+          />
+          <label class="check">
+            <input type="checkbox" checked={projected} disabled={mode === 'plan'} onchange={(e) => (includePlanned = e.currentTarget.checked)} />
+            Incluir lo planeado
+          </label>
+          {#if mode === 'current'}
+            <button onclick={closeMonth}>Cerrar mes</button>
+            {#if live > thisMonth}
+              <button class="link neutral" onclick={reopenMonth}>Reabrir {monthName(shift(live, -1))}</button>
+            {/if}
+            {#if closeError}<p class="error" role="alert">{closeError}</p>{/if}
+          {/if}
+        </div>
+      {/if}
+
+      <div class="side-bottom">
+        <p class="rd-sidebar__group">Sistema</p>
+        <button class="rd-sidebar__link" class:is-active={view === 'settings'} aria-current={view === 'settings' ? 'page' : undefined} onclick={() => showView('settings')}>
+          <svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg><span class="rd-sidebar__label">Ajustes</span>
+        </button>
       </div>
     </nav>
 
-    {#if view !== 'settings' && settings.loaded}
-      <div class="side-group" role="group" aria-label="Tiempo">
-        <span class="side-title">Tiempo</span>
-        <div class="side-links">
-          {#each modes as m (m.id)}
-            <button class="side-link" aria-pressed={mode === m.id} onclick={() => setMode(m.id)}>{m.label}</button>
-          {/each}
-        </div>
-        <div class="period-nav">
-          <button aria-label="Mes anterior" disabled={mode === 'current'} onclick={() => go(-1)}>‹</button>
-          <input
-            type="month"
-            bind:value={period}
-            disabled={mode === 'current'}
-            max={mode === 'past' ? shift(live, -1) : undefined}
-            min={mode === 'plan' ? shift(live, 1) : undefined}
-            aria-label="Periodo"
-          />
-          <button aria-label="Mes siguiente" disabled={mode === 'current'} onclick={() => go(1)}>›</button>
-        </div>
-      </div>
-
-      <div class="side-group" role="group" aria-label="Opciones">
-        <span class="side-title">Opciones</span>
-        <label class="check">
-          <input type="checkbox" checked={projected} disabled={mode === 'plan'} onchange={(e) => (includePlanned = e.currentTarget.checked)} />
-          Incluir lo planeado
-        </label>
-        {#if mode === 'current'}
-          <button onclick={closeMonth}>Cerrar mes</button>
-          {#if live > calendarLive}
-            <button class="link neutral" onclick={reopenMonth}>Reabrir {monthName(shift(live, -1))}</button>
-          {/if}
-          {#if closeError}<p class="error" role="alert">{closeError}</p>{/if}
-        {/if}
-      </div>
-    {/if}
-
-    <div class="side-foot">
-      <button class="side-link" aria-pressed={view === 'settings'} onclick={() => (view = 'settings')}>Ajustes</button>
+    <div class="rd-sidebar__foot">
+      <button class="rd-btn rd-btn--ghost rd-btn--sm" aria-label="Cambiar tema" onclick={toggleTheme}>
+        <svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+      </button>
+      <button class="rd-btn rd-btn--ghost rd-btn--sm rd-sidebar__label" onclick={() => session.logout()}>Salir</button>
     </div>
   </aside>
 
+  <div class="rd-shell__main">
+    <header class="rd-shell__bar">
+      <button class="rd-btn rd-btn--ghost rd-btn--sm rd-shell__menu" aria-expanded={drawer} aria-controls="app-sidebar" aria-label="Abrir menú" onclick={() => (drawer = true)}>
+        <svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+      </button>
+      <div class="modes" role="group" aria-label="Sección">
+        {#each ['movements', 'reports'] as const as v (v)}
+          <button aria-pressed={view === v} onclick={() => showView(v)}>{viewTitle[v]}</button>
+        {/each}
+      </div>
+    </header>
+
+    <div class="rd-shell__content">
 <main class="page">
   <header class="page-head">
     {#if view !== 'settings' && periodPattern.test(period)}
@@ -302,7 +326,8 @@
       {#if sheets.length > 1}
         <button aria-label="Moneda anterior" onclick={() => step(-1)}>‹</button>
       {/if}
-      <div class="segmented" role="group" aria-label="Moneda">
+      <div class="segmented slider" role="group" aria-label="Moneda" style="--n: {sheets.length}; --i: {Math.max(0, sheets.indexOf(sheet))}">
+        <span class="slider__thumb" aria-hidden="true"></span>
         {#each sheets as code (code)}
           <button aria-pressed={sheet === code} onclick={() => (sheet = code)}>{code}</button>
         {/each}
@@ -318,6 +343,13 @@
           onchange={(v) => addSheet(String(v))}
           options={currencies.codes.filter((c) => !sheets.includes(c)).map((c) => ({ value: c, label: c }))}
         />
+      {/if}
+      {#if view === 'reports'}
+        <div class="segmented sheets__months" role="group" aria-label="Meses de evolución">
+          {#each monthRanges as r (r)}
+            <button aria-pressed={months === r} onclick={() => (months = r)}>{r} meses</button>
+          {/each}
+        </div>
       {/if}
     </div>
   {/if}
@@ -391,21 +423,27 @@
     </div>
   {/if}
 
-  {#if valid && view === 'reports'}
-    <Reports {period} currency={sheet} {projected} summary={summary?.currencies?.find((x) => x.currency === sheet)} />
-  {:else if valid}
-    {#if mode === 'current'}
-      <Accounts
-        currency={sheet}
-        available={withoutCash(summary?.currencies?.find((x) => x.currency === sheet)?.available ?? '0.00')}
-        refresh={version}
-        onchange={() => version++}
-      />
-    {/if}
-    <Incomes {period} currency={sheet} planning={mode === 'plan'} refresh={version} onchange={() => version++} />
-    <Exchanges {period} currency={sheet} planning={mode === 'plan'} refresh={version} onchange={() => version++} />
-    <Expenses {period} currency={sheet} planning={mode === 'plan'} refresh={version} onchange={() => version++} />
+  {#if valid}
+    <div class="view" hidden={view !== 'reports'}>
+      <Reports {period} currency={sheet} {projected} {months} summary={summary?.currencies?.find((x) => x.currency === sheet)} />
+    </div>
+    <div class="view" hidden={view === 'reports'}>
+      {#if mode === 'current'}
+        <Accounts
+          currency={sheet}
+          available={withoutCash(summary?.currencies?.find((x) => x.currency === sheet)?.available ?? '0.00')}
+          refresh={version}
+          onchange={() => version++}
+        />
+      {/if}
+      <Incomes {period} currency={sheet} planning={mode === 'plan'} refresh={version} onchange={() => version++} />
+      <Exchanges {period} currency={sheet} planning={mode === 'plan'} refresh={version} onchange={() => version++} />
+      <Expenses {period} currency={sheet} planning={mode === 'plan'} refresh={version} onchange={() => version++} />
+    </div>
   {/if}
   {/if}
 </main>
+    </div>
+  </div>
+  <div class="rd-shell__scrim" role="presentation" onclick={() => (drawer = false)}></div>
 </div>

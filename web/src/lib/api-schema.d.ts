@@ -609,10 +609,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Change the settings
-         * @description Changing spend_offset only changes which month each period's money is said to be spent in; nothing stored is modified.
-         */
+        /** Change the settings */
         patch: operations["update-settings"];
         trace?: never;
     };
@@ -1035,11 +1032,6 @@ export interface components {
              * @example 2026-07-31
              */
             received_on: string;
-            /**
-             * @description Month in which this money is spent.
-             * @example 2026-08
-             */
-            spend_month: string;
             /** @enum {string} */
             status: "planned" | "confirmed";
         };
@@ -1112,8 +1104,6 @@ export interface components {
             period: string;
             /** @description Real balance, if registered. */
             real?: string;
-            /** @example 2026-09 */
-            spend_month: string;
             spent: string;
             /** @description By amount spent. An expense with several tags counts in each one. */
             tags: components["schemas"]["TagTotal"][] | null;
@@ -1342,11 +1332,6 @@ export interface components {
              * @example USD
              */
             default_currency: string;
-            /**
-             * Format: int64
-             * @description Months between earning money and spending it: 0 spends it the same month, 1 the following one.
-             */
-            spend_offset: number;
         };
         SetupInputBody: {
             password: string;
@@ -1356,8 +1341,6 @@ export interface components {
             currencies: components["schemas"]["CurrencySummary"][] | null;
             /** @example 2026-07 */
             period: string;
-            /** @example 2026-08 */
-            spend_month: string;
         };
         TagTotal: {
             /** Format: int64 */
@@ -1464,8 +1447,6 @@ export interface components {
             closed_through?: string;
             /** @description A registered currency; empty clears it. */
             default_currency?: string;
-            /** Format: int64 */
-            spend_offset?: number;
         };
     };
     responses: never;
