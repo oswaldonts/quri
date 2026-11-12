@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Logo from './Logo.svelte'
   import { session } from './session.svelte'
 
   let password = $state('')
@@ -14,7 +15,7 @@
 </script>
 
 <main class="card">
-  <h1>Income Manager</h1>
+  <h1 class="brand-title"><Logo size={28} />Quri</h1>
   <form onsubmit={submit}>
     <label>
       Contraseña

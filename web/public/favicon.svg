@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <circle cx="16" cy="16" r="14" fill="#2563eb"/>
-  <text x="16" y="22" font-family="system-ui, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#fff">$</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-600 -600 1200 1200">
+  <polygon points="-600,-600 450,-600 600,-450 600,600 -450,600 -600,450" fill="#131318"/>
+  <g fill="#c0fe04">
+  <polygon points="-279,-222 0,-222 0,0 -462,0"/>
+  <polygon points="-462,0 -239,0 0,288 -222,288"/>
+  <polygon points="0,-288 222,-288 462,0 239,0"/>
+  <polygon points="0,0 462,0 279,222 0,222"/>
+  </g>
 </svg>

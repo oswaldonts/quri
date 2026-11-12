@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-480 -300 2400 600">
+  <title>Quri</title>
+  <g fill="#c0fe04">
+  <polygon points="-279,-222 0,-222 0,0 -462,0"/>
+  <polygon points="-462,0 -239,0 0,288 -222,288"/>
+  <polygon points="0,-288 222,-288 462,0 239,0"/>
+  <polygon points="0,0 462,0 279,222 0,222"/>
+  </g>
+  <text x="620" y="130" font-family="Archivo, 'Helvetica Neue', Arial, sans-serif" font-weight="900" font-size="400" letter-spacing="12" fill="#e2e2e8">QURI</text>
+</svg>
