@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DatePicker from './DatePicker.svelte'
   import Select from './Select.svelte'
   import { tick } from 'svelte'
   import { api, connectionError, failureMessage, type Schemas } from './api'
@@ -233,7 +234,7 @@
         </label>
         <label>
           Fecha
-          <input type="date" bind:value={exchangedOn} required />
+          <DatePicker bind:value={exchangedOn} />
         </label>
       </div>
 

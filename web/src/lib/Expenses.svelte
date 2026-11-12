@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DatePicker from './DatePicker.svelte'
   import Select from './Select.svelte'
   import { tick } from 'svelte'
   import { api, connectionError, failureMessage, type Schemas } from './api'
@@ -331,7 +332,7 @@
         </label>
         <label>
           {Number(occurrences) > 1 || editingSeries ? 'Fecha de cobro' : 'Fecha'}
-          <input type="date" bind:value={spentOn} required />
+          <DatePicker bind:value={spentOn} />
         </label>
       </div>
       <div class="row wide">
