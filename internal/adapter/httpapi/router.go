@@ -45,6 +45,10 @@ type Services struct {
 	Accounts   AccountService
 	Currencies CurrencyService
 	Settings   SettingsService
+
+	// InsecureCookies drops the Secure flag of the session cookie. Only for a build that serves
+	// no network port (the desktop webview), where the origin is not https nor localhost.
+	InsecureCookies bool
 }
 
 // NewRouter builds the HTTP handler with all routes, middlewares and docs.
@@ -61,7 +65,7 @@ func NewRouter(s Services, logger *slog.Logger) http.Handler {
 	api.UseMiddleware(requireSession(api, s.Auth))
 
 	registerHealth(api)
-	registerAuth(api, s.Auth)
+	registerAuth(api, s.Auth, !s.InsecureCookies)
 	registerCategories(api, s.Categories)
 	registerIncomes(api, s.Incomes)
 	registerIncomeEdits(api, s.Incomes)

@@ -38,8 +38,13 @@ func OpenDB(ctx context.Context, path string) (*sql.DB, error) {
 	return sqlite.Open(ctx, path)
 }
 
+// Options tunes what differs between the server and the desktop build.
+type Options struct {
+	InsecureCookies bool
+}
+
 // New builds the handler that serves the API and the embedded frontend from the same origin.
-func New(db *sql.DB, authService *auth.Service, logger *slog.Logger) (http.Handler, error) {
+func New(db *sql.DB, authService *auth.Service, logger *slog.Logger, opts Options) (http.Handler, error) {
 	categoryRepo := sqlite.NewCategoryRepository(db)
 	categoryService := category.NewService(categoryRepo, categoryRepo)
 	currencyService := currency.NewService(sqlite.NewCurrencyRepository(db))
@@ -69,6 +74,8 @@ func New(db *sql.DB, authService *auth.Service, logger *slog.Logger) (http.Handl
 		Accounts:   accountService,
 		Currencies: currencyService,
 		Settings:   settingsService,
+
+		InsecureCookies: opts.InsecureCookies,
 	}, logger)
 
 	// The frontend is embedded in the binary and served from the same origin as the API.

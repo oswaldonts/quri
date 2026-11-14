@@ -48,7 +48,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	defer db.Close()
 
-	handler, err := app.New(db, authService, logger)
+	handler, err := app.New(db, authService, logger, app.Options{})
 	if err != nil {
 		return err
 	}
