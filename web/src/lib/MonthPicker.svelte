@@ -6,7 +6,8 @@
     max,
     today,
     locked = false,
-  }: { value?: string; min?: string; max?: string; today?: string; locked?: boolean } = $props()
+    onpick,
+  }: { value?: string; min?: string; max?: string; today?: string; locked?: boolean; onpick?: () => void } = $props()
 
   let year = $state(new Date().getFullYear())
   $effect(() => {
@@ -45,7 +46,7 @@
         aria-pressed={p === value}
         aria-label="{m.name} {year}"
         disabled={blocked(p)}
-        onclick={() => (value = p)}
+        onclick={() => ((value = p), onpick?.())}
       >
         {m.label}
       </button>

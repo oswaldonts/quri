@@ -19,9 +19,10 @@
   const periodPattern = /^\d{4}-\d{2}$/
 
   // The live period is the calendar month, or the one after the last closed month when that is later.
-  //   past:    periods before the live one (fix what was registered in the wrong place)
-  //   current: only the live period (the default)
-  //   plan:    this month and later, to plan what comes next
+  // The mode follows the chosen month:
+  //   past:    before the live one (fix what was registered in the wrong place)
+  //   current: the live one (the default)
+  //   plan:    after it, to plan what comes next
   type Mode = 'past' | 'current' | 'plan'
   const thisMonth = toPeriod(new Date())
   // Closing a month moves on to the next one even if the calendar hasn't got there yet.
@@ -29,17 +30,7 @@
     settings.closedThrough && shift(settings.closedThrough, 1) > thisMonth ? shift(settings.closedThrough, 1) : thisMonth,
   )
   const viewTitle = { movements: 'Movimientos', reports: 'Reportes', settings: 'Ajustes' }
-  const modes: { id: Mode; label: string; icon: string }[] = [
-    { id: 'past', label: 'Pasado', icon: '<svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg>' },
-    { id: 'current', label: 'Presente', icon: '<svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>' },
-    { id: 'plan', label: 'Futuro', icon: '<svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>' },
-  ]
-  const inMode: Record<Mode, (p: string) => boolean> = $derived({
-    past: (p) => p < live,
-    current: (p) => p === live,
-    plan: (p) => p > live,
-  })
-  const startOf: Record<Mode, string> = $derived({ past: shift(live, -1), current: live, plan: shift(live, 1) })
+  const modeLabel: Record<Mode, string> = { past: 'Pasado', current: 'Presente', plan: 'Futuro' }
 
   let collapsed = $state(false)
   let drawer = $state(false)
@@ -57,13 +48,13 @@
     }
   }
 
-  let mode = $state<Mode>('current')
   let view = $state<'movements' | 'reports' | 'settings'>('movements')
   // Lets the user see how the planned entries would change what is available.
   let includePlanned = $state(false)
-  const projected = $derived(mode === 'plan' || includePlanned)
   let period = $state(toPeriod(new Date()))
-  const valid = $derived(periodPattern.test(period) && inMode[mode](period))
+  const valid = $derived(periodPattern.test(period))
+  const mode = $derived<Mode>(period < live ? 'past' : period === live ? 'current' : 'plan')
+  const projected = $derived(mode === 'plan' || includePlanned)
 
   // Once the settings are known (and whenever the live period moves: offset, closing or reopening
   // a month) the screen goes back to the live period.
@@ -71,7 +62,7 @@
   $effect(() => {
     if (!settings.loaded || liveSeen === live) return
     liveSeen = live
-    period = startOf[mode]
+    period = live
   })
 
   let closeError = $state('')
@@ -81,13 +72,6 @@
   }
   async function reopenMonth() {
     closeError = await settings.setClosedThrough(shift(live, -2))
-  }
-
-  function setMode(next: Mode) {
-    mode = next
-    period = startOf[next]
-    if (view === 'settings') view = 'movements'
-    drawer = false
   }
 
   function showView(next: typeof view) {
@@ -248,20 +232,12 @@
 
     <nav class="rd-sidebar__nav" aria-label="Periodo">
       {#if settings.loaded}
-        <p class="rd-sidebar__group">Tiempo</p>
-        {#each modes as m (m.id)}
-          <button class="rd-sidebar__link" class:is-active={view !== 'settings' && mode === m.id} aria-current={view !== 'settings' && mode === m.id ? 'page' : undefined} onclick={() => setMode(m.id)}>
-            {@html m.icon}<span class="rd-sidebar__label">{m.label}</span>
-          </button>
-        {/each}
-
+        <p class="rd-sidebar__group">Periodo</p>
         <div class="side-extra">
           <MonthPicker
             bind:value={period}
-            locked={mode === 'current'}
-            today={mode === 'current' ? undefined : thisMonth}
-            max={mode === 'past' ? shift(live, -1) : undefined}
-            min={mode === 'plan' ? shift(live, 1) : undefined}
+            today={live}
+            onpick={() => (view = view === 'settings' ? 'movements' : view)}
           />
           <label class="check">
             <input type="checkbox" checked={projected} disabled={mode === 'plan'} onchange={(e) => (includePlanned = e.currentTarget.checked)} />
@@ -309,7 +285,7 @@
 <main class="page">
   <header class="page-head">
     {#if view !== 'settings' && periodPattern.test(period)}
-      <span class="eyebrow">{modes.find((m) => m.id === mode)?.label} · {period}</span>
+      <span class="eyebrow">{modeLabel[mode]} · {period}</span>
       <h1>{viewTitle[view]}</h1>
     {:else}
       <span class="eyebrow">Configuración</span>
@@ -357,7 +333,7 @@
   {#if loadError}
     <p class="error" role="alert">{loadError}</p>
   {:else if !valid}
-    <p class="muted">Elige un periodo {mode === 'past' ? 'anterior a ' + monthName(live) : 'posterior a ' + monthName(live)}.</p>
+    <p class="muted">Elige un mes en el calendario.</p>
   {:else if loading && !summary}
     <p class="muted">Cargando…</p>
   {:else if summary}
