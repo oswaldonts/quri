@@ -27,10 +27,6 @@ func run() error {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx := context.Background()
 
-	authService, err := app.LocalAuth()
-	if err != nil {
-		return err
-	}
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return fmt.Errorf("locate config directory: %w", err)
@@ -41,9 +37,9 @@ func run() error {
 	}
 	defer db.Close()
 
-	// Secure cookies need https or localhost; the webview serves from wails:// (or wails.localhost),
-	// and the app has no network port for anyone to sniff.
-	handler, err := app.New(db, authService, logger, app.Options{InsecureCookies: true})
+	// No login: the app opens no network port, so the only one who can reach it is whoever is
+	// logged into this machine, who owns the database file anyway.
+	handler, err := app.New(db, nil, logger, app.Options{NoAuth: true})
 	if err != nil {
 		return err
 	}

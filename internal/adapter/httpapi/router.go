@@ -46,9 +46,9 @@ type Services struct {
 	Currencies CurrencyService
 	Settings   SettingsService
 
-	// InsecureCookies drops the Secure flag of the session cookie. Only for a build that serves
-	// no network port (the desktop webview), where the origin is not https nor localhost.
-	InsecureCookies bool
+	// NoAuth serves everything without a session and registers no login routes. Only for a build
+	// that opens no network port (the desktop app), where the machine's user is the operator.
+	NoAuth bool
 }
 
 // NewRouter builds the HTTP handler with all routes, middlewares and docs.
@@ -62,10 +62,14 @@ func NewRouter(s Services, logger *slog.Logger) http.Handler {
 	r.Use(middleware.Recoverer)
 
 	api := humachi.New(r, newConfig())
-	api.UseMiddleware(requireSession(api, s.Auth))
+	if !s.NoAuth {
+		api.UseMiddleware(requireSession(api, s.Auth))
+	}
 
-	registerHealth(api)
-	registerAuth(api, s.Auth, !s.InsecureCookies)
+	registerHealth(api, !s.NoAuth)
+	if !s.NoAuth {
+		registerAuth(api, s.Auth)
+	}
 	registerCategories(api, s.Categories)
 	registerIncomes(api, s.Incomes)
 	registerIncomeEdits(api, s.Incomes)

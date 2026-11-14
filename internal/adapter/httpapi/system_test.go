@@ -19,6 +19,25 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestNoAuthHasNoLogin(t *testing.T) {
+	h := NewRouter(Services{NoAuth: true}, quiet)
+
+	var got HealthOutput
+	decode(t, send(h, http.MethodGet, "/health", ""), &got.Body)
+	if got.Body.AuthRequired {
+		t.Error("auth_required = true, want false")
+	}
+	if rec := send(h, http.MethodPost, "/login", `{"password":"x"}`); rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("/login status = %d, want 404 or 405", rec.Code)
+	}
+
+	var withAuth HealthOutput
+	decode(t, send(NewRouter(Services{}, quiet), http.MethodGet, "/health", ""), &withAuth.Body)
+	if !withAuth.Body.AuthRequired {
+		t.Error("auth_required = false, want true by default")
+	}
+}
+
 func TestDocs(t *testing.T) {
 	h := NewRouter(Services{}, quiet)
 

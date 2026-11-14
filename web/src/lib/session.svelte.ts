@@ -6,6 +6,8 @@ export type SessionState = 'loading' | 'setup' | 'login' | 'ready' | 'error'
 
 class Session {
   state = $state<SessionState>('loading')
+  // false in the desktop build, which has no login (and so nothing to log out of).
+  authRequired = $state(true)
 
   // check finds out where the user stands. The API has no "who am I" endpoint, so it
   // asks for something cheap that needs a session: 200 means logged in, 401 means
@@ -13,6 +15,8 @@ class Session {
   async check() {
     this.state = 'loading'
     try {
+      const health = await api.GET('/health')
+      if (health.data) this.authRequired = health.data.auth_required
       const { response } = await api.GET('/categories')
       if (response.ok) this.state = 'ready'
       else if (response.status === 428) this.state = 'setup'

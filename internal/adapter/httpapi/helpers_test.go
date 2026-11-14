@@ -37,7 +37,7 @@ var testAuth = auth.NewService(mustHash(testPassword), []byte("test-secret"))
 // testSessionCookie is a valid, unexpired session for testAuth.
 var testSessionCookie = func() *http.Cookie {
 	token, expiresAt := testAuth.IssueToken()
-	return newSessionCookie(token, expiresAt, true)
+	return newSessionCookie(token, expiresAt)
 }()
 
 func mustHash(password string) []byte {

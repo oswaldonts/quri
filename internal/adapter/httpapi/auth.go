@@ -12,8 +12,7 @@ import (
 // sessionCookie is the name of the cookie holding the session token.
 // It is HttpOnly (JavaScript can never read it, so an XSS can't steal it) and
 // Secure (browsers treat localhost/127.0.0.1 as a secure origin, so this also
-// works in development; it needs real TLS anywhere else). The desktop build, which serves
-// no network port, turns Secure off with Services.InsecureCookies.
+// works in development; it needs real TLS anywhere else).
 const sessionCookie = "session"
 
 // AuthService checks the operator's password and issues/verifies session tokens.
@@ -57,7 +56,7 @@ const (
 	loginBurst     = 5
 )
 
-func registerAuth(api huma.API, svc AuthService, secure bool) {
+func registerAuth(api huma.API, svc AuthService) {
 	limiter := rate.NewLimiter(rate.Every(loginRateLimit), loginBurst)
 
 	huma.Register(api, huma.Operation{
@@ -76,7 +75,7 @@ func registerAuth(api huma.API, svc AuthService, secure bool) {
 			return nil, toHTTPError(ctx, "setup", err)
 		}
 		token, expiresAt := svc.IssueToken()
-		return &LoginOutput{SetCookie: newSessionCookie(token, expiresAt, secure).String()}, nil
+		return &LoginOutput{SetCookie: newSessionCookie(token, expiresAt).String()}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -97,7 +96,7 @@ func registerAuth(api huma.API, svc AuthService, secure bool) {
 			return nil, toHTTPError(ctx, "login", err)
 		}
 		token, expiresAt := svc.IssueToken()
-		return &LoginOutput{SetCookie: newSessionCookie(token, expiresAt, secure).String()}, nil
+		return &LoginOutput{SetCookie: newSessionCookie(token, expiresAt).String()}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -109,30 +108,30 @@ func registerAuth(api huma.API, svc AuthService, secure bool) {
 		Tags:          []string{tagAuth},
 		DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, in *struct{}) (*LoginOutput, error) {
-		return &LoginOutput{SetCookie: clearedSessionCookie(secure).String()}, nil
+		return &LoginOutput{SetCookie: clearedSessionCookie().String()}, nil
 	})
 }
 
-func newSessionCookie(token string, expiresAt time.Time, secure bool) *http.Cookie {
+func newSessionCookie(token string, expiresAt time.Time) *http.Cookie {
 	return &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
 		Path:     "/",
 		Expires:  expiresAt,
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	}
 }
 
-func clearedSessionCookie(secure bool) *http.Cookie {
+func clearedSessionCookie() *http.Cookie {
 	return &http.Cookie{
 		Name:     sessionCookie,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	}
 }

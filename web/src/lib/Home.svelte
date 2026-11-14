@@ -265,7 +265,9 @@
       <button class="rd-btn rd-btn--ghost rd-btn--sm" aria-label="Cambiar tema" onclick={toggleTheme}>
         <svg class="rd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
       </button>
-      <button class="rd-btn rd-btn--ghost rd-btn--sm rd-sidebar__label" onclick={() => session.logout()}>Salir</button>
+      {#if session.authRequired}
+        <button class="rd-btn rd-btn--ghost rd-btn--sm rd-sidebar__label" onclick={() => session.logout()}>Salir</button>
+      {/if}
     </div>
   </aside>
 

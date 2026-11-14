@@ -40,7 +40,8 @@ func OpenDB(ctx context.Context, path string) (*sql.DB, error) {
 
 // Options tunes what differs between the server and the desktop build.
 type Options struct {
-	InsecureCookies bool
+	// NoAuth runs without a login: the desktop build, where the machine's user is the operator.
+	NoAuth bool
 }
 
 // New builds the handler that serves the API and the embedded frontend from the same origin.
@@ -75,7 +76,7 @@ func New(db *sql.DB, authService *auth.Service, logger *slog.Logger, opts Option
 		Currencies: currencyService,
 		Settings:   settingsService,
 
-		InsecureCookies: opts.InsecureCookies,
+		NoAuth: opts.NoAuth,
 	}, logger)
 
 	// The frontend is embedded in the binary and served from the same origin as the API.

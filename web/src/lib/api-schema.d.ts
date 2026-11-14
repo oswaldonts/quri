@@ -1011,6 +1011,8 @@ export interface components {
              * @example ok
              */
             status: string;
+            /** @description false when the app runs without a login (the desktop build). */
+            auth_required: boolean;
         };
         Income: {
             /** @example 1330.00 */
