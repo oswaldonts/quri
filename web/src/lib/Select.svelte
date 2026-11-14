@@ -141,6 +141,7 @@
         aria-selected={i === selected}
         aria-disabled={o.disabled ? 'true' : undefined}
         class:is-active={i === active}
+        onmouseenter={() => !o.disabled && (active = i)}
         onmousedown={(e) => {
           e.preventDefault()
           choose(i)

@@ -742,9 +742,9 @@ select {
   font-size: var(--rd-fs-xs);
 }
 
-input:hover,
-select:hover {
-  border-color: var(--rd-text-dim);
+input:hover:not(:disabled),
+select:hover:not(:disabled) {
+  border-color: var(--accent);
 }
 
 input:focus,
@@ -915,6 +915,10 @@ tbody tr:hover td {
   border-radius: 0;
   padding-right: 2.6em;
   background-position: calc(100% - 1.3em) 50%, calc(100% - 1em) 50%;
+}
+
+.rd-combo__btn:hover:not(:disabled) {
+  border-color: var(--rd-accent);
 }
 
 .rd-combo__list {
