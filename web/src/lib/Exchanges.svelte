@@ -1,14 +1,14 @@
 <script lang="ts">
   import DatePicker from './DatePicker.svelte'
   import Select from './Select.svelte'
-  import { tick } from 'svelte'
+  import { tick, untrack } from 'svelte'
   import { api, connectionError, failureMessage, type Schemas } from './api'
   import { today } from './dates'
   import { currencies } from './currencies.svelte'
   import { convert, formatMoney, parseAmount, parseRate, type Currency } from './money'
 
   // currency is the open sheet: the list shows the exchanges that touch it, and the form
-  // starts as "receive this currency".
+  // starts as "give this currency".
   let {
     period,
     currency,
@@ -25,10 +25,15 @@
   let from = $state<Currency>('')
   let to = $state<Currency>('')
 
-  // The sheet's currency is what you receive; what you give starts as the first other one registered.
+  // The sheet's currency is what you give; what you receive starts as the first other one registered.
   $effect(() => {
-    to = currency
-    if (!from || from === currency) from = currencies.codes.find((c) => c !== currency) ?? ''
+    const c = currency
+    const codes = currencies.codes
+    untrack(() => {
+      if (editingId) return
+      from = c
+      if (!to || to === c) to = codes.find((x) => x !== c) ?? ''
+    })
   })
   let amount = $state('')
   let exchangedOn = $state(today())
