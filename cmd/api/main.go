@@ -5,31 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
-	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/httpapi"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/localauth"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/sqlite"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/adapter/webui"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
+	"github.com/oswaldoaquinas/go-income-mgr/internal/app"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/auth"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/balance"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/budget"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/exchange"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/settings"
-	"github.com/oswaldoaquinas/go-income-mgr/internal/core/summary"
-	"github.com/oswaldoaquinas/go-income-mgr/web"
 )
 
 // shutdownTimeout bounds how long in-flight requests may take once a stop signal arrives.
@@ -58,57 +42,21 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	dbPath := getenv("DATABASE_PATH", "data/income.db")
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
-		return fmt.Errorf("create database directory: %w", err)
-	}
-	db, err := sqlite.Open(ctx, dbPath)
+	db, err := app.OpenDB(ctx, dbPath)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	// Wiring: adapters are created here and injected into the core.
-	categoryRepo := sqlite.NewCategoryRepository(db)
-	categoryService := category.NewService(categoryRepo, categoryRepo)
-	currencyService := currency.NewService(sqlite.NewCurrencyRepository(db))
-	settingsService := settings.NewService(sqlite.NewSettingsRepository(db), currencyService)
-	incomeRepo := sqlite.NewIncomeRepository(db)
-	expenseRepo := sqlite.NewExpenseRepository(db)
-	balanceRepo := sqlite.NewBalanceRepository(db)
-	incomeService := income.NewService(incomeRepo, categoryService, currencyService)
-	balanceService := balance.NewService(balanceRepo, currencyService)
-	accountService := account.NewService(sqlite.NewAccountRepository(db), expenseRepo, currencyService)
-	expenseService := expense.NewService(expenseRepo, categoryService, accountService, currencyService)
-	budgetRepo := sqlite.NewBudgetRepository(db)
-	budgetService := budget.NewService(budgetRepo, categoryService, currencyService)
-	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo, sqlite.NewPeriodBounds(db))
-	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService, currencyService)
-
-	api := httpapi.NewRouter(httpapi.Services{
-		Auth:       authService,
-		Categories: categoryService,
-		Incomes:    incomeService,
-		Expenses:   expenseService,
-		Balances:   balanceService,
-		Summaries:  summaryService,
-		Budgets:    budgetService,
-		Rates:      exchangeService,
-		Exchanges:  exchangeService,
-		Accounts:   accountService,
-		Currencies: currencyService,
-		Settings:   settingsService,
-	}, logger)
-
-	// The frontend is embedded in the binary and served from the same origin as the API.
-	files := web.Files()
-	if _, err := fs.Stat(files, "index.html"); err != nil {
-		logger.Warn("web UI not built, serving the API only (build it with: make web-build)")
+	handler, err := app.New(db, authService, logger)
+	if err != nil {
+		return err
 	}
 
 	addr := ":" + getenv("PORT", "8080")
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           webui.Handler(files, api),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -168,34 +116,10 @@ func newAuthService() (*auth.Service, error) {
 		return nil, errors.New("set both AUTH_PASSWORD_HASH and AUTH_SESSION_SECRET, or neither " +
 			"(with AUTH_LOCAL_CREDENTIALS=1) to use the local setup flow")
 	case getenv("AUTH_LOCAL_CREDENTIALS", "") == "1":
-		return newLocalAuthService()
+		return app.LocalAuth()
 	default:
 		return nil, errors.New("set AUTH_PASSWORD_HASH and AUTH_SESSION_SECRET (deployed mode), or " +
 			"AUTH_LOCAL_CREDENTIALS=1 to store credentials in a local file instead " +
 			"(generate a password hash with: printf '%s' 'password' | go run ./cmd/hashpw)")
 	}
-}
-
-// newLocalAuthService loads or, on first run, creates the local credentials
-// file next to the rest of this app's data on the current machine.
-func newLocalAuthService() (*auth.Service, error) {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return nil, fmt.Errorf("locate config directory: %w", err)
-	}
-	store := localauth.NewStore(filepath.Join(configDir, "go-income-mgr", "credentials.json"))
-
-	secret, passwordHash, ok, err := store.Load()
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		if secret, err = store.Init(); err != nil {
-			return nil, err
-		}
-	}
-	if passwordHash != nil {
-		return auth.NewService(passwordHash, secret), nil
-	}
-	return auth.NewUnconfiguredService(secret, store.SavePasswordHash(secret)), nil
 }
