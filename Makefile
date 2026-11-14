@@ -18,7 +18,7 @@ JOB   := -var-file=$(ENV).vars.hcl -var image=$(IMAGE) \
 export NOMAD_NAMESPACE := $(ENV)
 
 .DEFAULT_GOAL := help
-.PHONY: help run down test vet fmt check sqlc web-dev web-build web-check web-types image plan deploy status logs clean-tree
+.PHONY: help run down test vet fmt check sqlc web-dev web-build web-check web-types desktop image plan deploy status logs clean-tree
 
 help: ## List the targets
 	@awk -F ':.*## ' '/^## / {print "\n" substr($$0, 4)} /^[a-z-]+:.*## / {printf "  %-10s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -60,6 +60,18 @@ web-check: ## Type-check the frontend
 
 web-types: ## Regenerate the frontend's API types from the API's OpenAPI spec (starts the API)
 	$(COMPOSE) run --rm web npm run types
+
+## Desktop app (cmd/desktop, Wails; own Go module)
+
+DESKTOP_IMAGE := quri-desktop-build
+# Runs a go command inside cmd/desktop in the image that has the GTK/WebKit headers Wails needs.
+DESKTOP_GO := docker run --rm --user $$(id -u):$$(id -g) -e HOME=/tmp -e GOCACHE=/go-cache/build \
+              -e GOMODCACHE=/go-cache/mod -v $(CURDIR):/app -v $(HOME)/.cache/go-container:/go-cache \
+              -w /app/cmd/desktop $(DESKTOP_IMAGE) go
+
+desktop: web-build ## Build the Linux desktop app into bin/quri (runs on a host with libwebkit2gtk-4.1)
+	docker build -q -f docker/desktop.Dockerfile -t $(DESKTOP_IMAGE) docker
+	$(DESKTOP_GO) build -tags "desktop,production,webkit2_41" -trimpath -ldflags="-s -w" -o /app/bin/quri .
 
 ## Deployment (ENV=dev by default)
 
