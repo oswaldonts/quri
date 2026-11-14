@@ -1433,3 +1433,17 @@ tbody tr:hover td {
 .view[hidden] {
   display: none;
 }
+
+/* The entry just saved fades from the accent so it is easy to find */
+@keyframes saved-flash {
+  from {
+    background: var(--rd-accent-a25);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+tr.saved td {
+  animation: saved-flash 2.5s ease-out;
+}

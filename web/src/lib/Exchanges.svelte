@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { revealRow } from './flash'
   import DatePicker from './DatePicker.svelte'
   import Select from './Select.svelte'
   import { tick, untrack } from 'svelte'
@@ -122,6 +123,16 @@
     }
   }
 
+  // The entry just saved: its row is highlighted and scrolled into view.
+  let savedId = $state('')
+  function markSaved(id: string) {
+    savedId = id
+    setTimeout(() => savedId === id && (savedId = ''), 3000)
+  }
+  $effect(() => {
+    if (savedId && all.some((x) => x.id === savedId)) revealRow(savedId)
+  })
+
   async function submit(event: SubmitEvent) {
     event.preventDefault()
     formError = ''
@@ -137,7 +148,7 @@
         description: description.trim(),
         status: planned ? ('planned' as const) : ('confirmed' as const),
       }
-      const { error, response } = editingId
+      const { data, error, response } = editingId
         ? await api.PATCH('/periods/{period}/exchanges/{id}', {
             params: { path: { period, id: editingId } },
             body: fields,
@@ -147,6 +158,7 @@
         formError = failureMessage(response, error)
         return
       }
+      markSaved(data?.id ?? editingId)
       if (editingId) cancel()
       amount = ''
       description = ''
@@ -315,7 +327,7 @@
       </thead>
       <tbody>
         {#each exchanges as e (e.id)}
-          <tr>
+          <tr id="row-{e.id}" class:saved={e.id === savedId}>
             <td>{e.exchanged_on}</td>
             <td>
               1 {e.from.currency} = {e.rate} {e.to.currency}{e.description ? ` · ${e.description}` : ''}

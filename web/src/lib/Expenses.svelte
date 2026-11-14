@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { revealRow } from './flash'
   import DatePicker from './DatePicker.svelte'
   import Select from './Select.svelte'
   import { tick } from 'svelte'
@@ -31,6 +32,8 @@
   let description = $state('')
   let tags = $state('')
   let planned = $state(false)
+  // A disabled expense stays registered but stops counting (summary and account balance).
+  let excluded = $state(false)
   let accountId = $state('')
   let formError = $state('')
   let busy = $state(false)
@@ -100,6 +103,18 @@
     if (!editingId) accountId = defaultAccount()
   })
 
+  // The entry just saved: its row is highlighted and scrolled into view.
+  let savedId = $state('')
+  function markSaved(id: string) {
+    savedId = id
+    setTimeout(() => savedId === id && (savedId = ''), 3000)
+  }
+  $effect(() => {
+    if (savedId && expenses.some((x) => x.id === savedId)) revealRow(savedId)
+  })
+
+  let openCat = $state('')
+
   async function submit(event: SubmitEvent) {
     event.preventDefault()
     formError = ''
@@ -132,10 +147,10 @@
         status: planned ? ('planned' as const) : ('confirmed' as const),
         account_id: accountId,
       }
-      const { error, response } = editingId
+      const { data, error, response } = editingId
         ? await api.PATCH('/periods/{period}/expenses/{id}', {
             params: { path: { period, id: editingId } },
-            body: fields,
+            body: { ...fields, disabled: excluded },
           })
         : await api.POST('/periods/{period}/expenses', {
             params: { path: { period } },
@@ -157,6 +172,8 @@
         }
       }
       remember(accountId)
+      openCat = categoryId
+      markSaved(data?.id ?? editingId)
       if (editingId) cancel()
       amount = ''
       description = ''
@@ -179,6 +196,7 @@
     description = expense.description
     tags = (expense.tags ?? []).join(', ')
     planned = expense.status === 'planned'
+    excluded = expense.disabled
     accountId = expense.account_id ?? ''
     editingSeries = !!expense.series_id
     seriesWas = { no: expense.series_no ?? 1, total: expense.series_total ?? 1 }
@@ -200,6 +218,7 @@
     description = ''
     tags = ''
     planned = planning
+    excluded = false
     accountId = defaultAccount()
     formError = ''
   }
@@ -210,20 +229,6 @@
       const { error, response } = await api.PATCH('/periods/{period}/expenses/{id}', {
         params: { path: { period, id: expense.id } },
         body: { status: 'confirmed' },
-      })
-      if (error) loadError = failureMessage(response, error)
-      else onchange()
-    } catch {
-      loadError = connectionError
-    }
-  }
-
-  // A disabled expense stays registered but stops counting (summary and account balance).
-  async function toggleDisabled(expense: Schemas['Expense']) {
-    try {
-      const { error, response } = await api.PATCH('/periods/{period}/expenses/{id}', {
-        params: { path: { period, id: expense.id } },
-        body: { disabled: !expense.disabled },
       })
       if (error) loadError = failureMessage(response, error)
       else onchange()
@@ -275,7 +280,7 @@
 </script>
 
 {#snippet row(e: Schemas['Expense'], fallback: string)}
-  <tr class:off={e.disabled}>
+  <tr id="row-{e.id}" class:off={e.disabled} class:saved={e.id === savedId}>
     <td>{e.spent_on}</td>
     <td>
       {e.description || fallback}
@@ -283,7 +288,7 @@
       {#each e.tags as tag (tag)}<span class="badge">#{tag}</span>{/each}
       {#if e.account_id}<span class="badge">{accountName(e.account_id)}</span>{/if}
       {#if e.status === 'planned'}<span class="badge warn">Planeado</span>{/if}
-      {#if e.disabled}<span class="badge">Desactivado</span>{/if}
+      {#if e.disabled}<span class="badge">Excluido</span>{/if}
     </td>
     <td class="num"><span class="amount">{formatMoney(e.amount, e.currency)}</span></td>
     <td class="num">
@@ -294,13 +299,6 @@
           <button class="link neutral" aria-label="Confirmar gasto" onclick={() => confirmExpense(e)}>Confirmar</button>
         {/if}
         <button class="link neutral" aria-label="Editar gasto" onclick={() => edit(e)}>Editar</button>
-        <button
-          class="link neutral"
-          aria-label={e.disabled ? 'Activar gasto' : 'Desactivar gasto'}
-          onclick={() => toggleDisabled(e)}
-        >
-          {e.disabled ? 'Activar' : 'Desactivar'}
-        </button>
         <button class="link" aria-label="Eliminar gasto" onclick={() => remove(e)}>Eliminar</button>
       {/if}
     </td>
@@ -364,15 +362,18 @@
           en los periodos siguientes, con el mismo monto y el mismo día de cobro. Confírmalos cuando ocurran.
         </p>
       {/if}
-      {#if accountId && choosableAccounts.find((a) => a.id === accountId)?.kind === 'cash'}
-        <p class="muted wide">Baja el saldo del efectivo, como cualquier gasto baja la cuenta de donde sale.</p>
-      {/if}
       {#if formError}<p class="error wide" role="alert">{formError}</p>{/if}
       <div class="wide actions">
         <label class="check">
           <input type="checkbox" bind:checked={planned} />
           Planeado (aún no ocurre)
         </label>
+        {#if editingId}
+          <label class="check" title="Sigue registrado pero no cuenta en el resumen ni en el saldo">
+            <input type="checkbox" bind:checked={excluded} />
+            Excluir de los totales
+          </label>
+        {/if}
         <button class="primary" disabled={busy || !amount || !categoryId}>{editingId ? 'Guardar cambios' : 'Guardar gasto'}</button>
         {#if editingId}<button type="button" class="link neutral" onclick={cancel}>Cancelar</button>{/if}
       </div>
@@ -386,7 +387,7 @@
       {#each groups as c, i (c.id)}
         {@const counted = c.items.filter((e) => !e.disabled)}
         {@const total = sumAmounts(counted.map((e) => e.amount))}
-        <details open={i === 0}>
+        <details open={i === 0 || c.id === openCat}>
           <summary>
             <span class="cat-name">{c.name} <span class="muted">({c.items.length})</span></span>
             <span class="cat-share" aria-hidden="true">

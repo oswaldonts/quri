@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { revealRow } from './flash'
   import DatePicker from './DatePicker.svelte'
   import Select from './Select.svelte'
   import { tick } from 'svelte'
@@ -60,6 +61,16 @@
     planned = planning
   })
 
+  // The entry just saved: its row is highlighted and scrolled into view.
+  let savedId = $state('')
+  function markSaved(id: string) {
+    savedId = id
+    setTimeout(() => savedId === id && (savedId = ''), 3000)
+  }
+  $effect(() => {
+    if (savedId && all.some((x) => x.id === savedId)) revealRow(savedId)
+  })
+
   async function submit(event: SubmitEvent) {
     event.preventDefault()
     formError = ''
@@ -77,7 +88,7 @@
         description: description.trim(),
         status: planned ? ('planned' as const) : ('confirmed' as const),
       }
-      const { error, response } = editingId
+      const { data, error, response } = editingId
         ? await api.PATCH('/periods/{period}/incomes/{id}', {
             params: { path: { period, id: editingId } },
             body: { ...fields, category_id: kind === 'extra' ? categoryId : '' },
@@ -90,6 +101,7 @@
         formError = failureMessage(response, error)
         return
       }
+      markSaved(data?.id ?? editingId)
       if (editingId) cancel()
       amount = ''
       description = ''
@@ -224,7 +236,7 @@
       </thead>
       <tbody>
         {#each incomes as i (i.id)}
-          <tr>
+          <tr id="row-{i.id}" class:saved={i.id === savedId}>
             <td>{i.received_on}</td>
             <td>
               {kindLabel[i.kind]}{i.description ? ` · ${i.description}` : ''}
