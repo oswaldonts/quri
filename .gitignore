@@ -19,3 +19,6 @@ coverage.*
 .idea/
 .vscode/
 .DS_Store
+
+# Desktop build output
+/cmd/desktop/build/bin/

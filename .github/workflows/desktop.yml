@@ -1,0 +1,54 @@
+# Builds the macOS desktop app (cmd/desktop) on a macOS runner: Wails needs Apple's frameworks, so
+# it can't be cross-compiled from Linux. Run it from the Actions tab ("Run workflow") or push a v* tag,
+# then download the "quri-macos" artifact. The app is not signed: see the note in the artifact step.
+name: desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            cmd/desktop/go.sum
+
+      - name: Build the frontend (embedded in the app)
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install the Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+
+      # -s: the frontend is already built above. -skipbindings: there are no Go methods bound to the UI,
+      # and generating them would run the app.
+      - name: Build the app (Intel and Apple Silicon)
+        working-directory: cmd/desktop
+        run: wails build -platform darwin/universal -s -skipbindings -trimpath
+
+      # Not signed or notarized: after unzipping, macOS blocks it on first launch. Open it with
+      # right-click > Open, or run: xattr -dr com.apple.quarantine Quri.app
+      - name: Zip the .app
+        working-directory: cmd/desktop/build/bin
+        run: ditto -c -k --keepParent Quri.app Quri-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quri-macos
+          path: cmd/desktop/build/bin/Quri-macos.zip

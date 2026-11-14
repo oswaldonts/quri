@@ -1,0 +1,11 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Quri",
+  "outputfilename": "Quri",
+  "info": {
+    "companyName": "Quri",
+    "productName": "Quri",
+    "productVersion": "0.1.0",
+    "comments": "Personal income and expense manager"
+  }
+}
