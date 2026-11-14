@@ -4,7 +4,7 @@
   import { api, connectionError, failureMessage } from './api'
   import Categories from './Categories.svelte'
   import { currencies } from './currencies.svelte'
-  import { settings } from './settings.svelte'
+  import { settings } from './appSettings.svelte'
 
   let { period, onchange }: { period: string; onchange: () => void } = $props()
 

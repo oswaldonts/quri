@@ -14,7 +14,7 @@
   import { currencies } from './currencies.svelte'
   import { formatMoney, isNegative, isZero, subtractAmounts, type Currency } from './money'
   import { session } from './session.svelte'
-  import { settings } from './settings.svelte'
+  import { settings } from './appSettings.svelte'
 
   const periodPattern = /^\d{4}-\d{2}$/
 
