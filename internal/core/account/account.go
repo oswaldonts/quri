@@ -2,7 +2,8 @@
 //
 // A balance is typed by hand (to match what the bank shows or what was counted) and goes down
 // with the confirmed expenses charged to the account afterwards. Incomes don't credit an account:
-// type the new balance when money arrives.
+// type the new balance when money arrives. Money moved between accounts does count: transfers,
+// and the exchanges that name the account they take the money from or put it in.
 package account
 
 import (
@@ -25,8 +26,10 @@ var (
 	ErrNotFound = errors.New("account not found")
 	// ErrNameTaken means the currency already has an account with that name.
 	ErrNameTaken = errors.New("account name already used in that currency")
-	// ErrInUse means expenses are charged to the account, so it can't be deleted.
-	ErrInUse = errors.New("account has expenses charged to it")
+	// ErrInUse means expenses, transfers or exchanges refer to the account, so it can't be deleted.
+	ErrInUse = errors.New("account has expenses, transfers or exchanges")
+	// ErrTransferNotFound means no transfer has the given ID.
+	ErrTransferNotFound = errors.New("transfer not found")
 	// ErrCashExists means the currency already has its cash account.
 	ErrCashExists = errors.New("cash already registered in that currency")
 )
@@ -79,6 +82,29 @@ type Repository interface {
 	Delete(ctx context.Context, id string) error
 	// List returns every account ordered by currency, cash first, then by name.
 	List(ctx context.Context) ([]Account, error)
+
+	// SaveTransfer stores a transfer.
+	SaveTransfer(ctx context.Context, t Transfer) error
+	// DeleteTransfer returns ErrTransferNotFound if no transfer has the ID.
+	DeleteTransfer(ctx context.Context, id string) error
+	// ListTransfers returns every transfer, the latest first.
+	ListTransfers(ctx context.Context) ([]Transfer, error)
+	// MovedSince is what came into the account minus what went out of it, registered after since,
+	// through transfers and confirmed exchanges (the exchange expenses are counted as charges).
+	MovedSince(ctx context.Context, accountID string, c money.Currency, since time.Time) (money.Money, error)
+	// HasMoves tells whether any transfer or exchange refers to the account.
+	HasMoves(ctx context.Context, accountID string) (bool, error)
+}
+
+// Transfer moves money from one account to another of the same currency.
+type Transfer struct {
+	ID          string
+	From        string // ID of the account the money leaves
+	To          string // ID of the account that receives it
+	Amount      money.Money
+	Description string
+	On          time.Time
+	CreatedAt   time.Time
 }
 
 // Charges reads the expenses charged to the accounts.
@@ -213,7 +239,11 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("check expenses of account: %w", err)
 	}
-	if used {
+	moved, err := s.repo.HasMoves(ctx, id)
+	if err != nil {
+		return fmt.Errorf("check moves of account: %w", err)
+	}
+	if used || moved {
 		return ErrInUse
 	}
 	return s.repo.Delete(ctx, id)
@@ -242,13 +272,21 @@ func (s *Service) List(ctx context.Context) ([]Account, error) {
 	return accounts, nil
 }
 
-// withBalance fills Balance: what was typed minus what was charged to the account since.
+// withBalance fills Balance: what was typed, minus what was charged to the account since, plus
+// what was moved into it.
 func (s *Service) withBalance(ctx context.Context, a Account) (Account, error) {
 	spent, err := s.spent.ChargedSince(ctx, a.ID, a.Amount.Currency(), a.UpdatedAt)
 	if err != nil {
 		return Account{}, fmt.Errorf("account charges: %w", err)
 	}
+	moved, err := s.repo.MovedSince(ctx, a.ID, a.Amount.Currency(), a.UpdatedAt)
+	if err != nil {
+		return Account{}, fmt.Errorf("account moves: %w", err)
+	}
 	if a.Balance, err = a.Amount.Sub(spent); err != nil {
+		return Account{}, fmt.Errorf("account balance: %w", err)
+	}
+	if a.Balance, err = a.Balance.Add(moved); err != nil {
 		return Account{}, fmt.Errorf("account balance: %w", err)
 	}
 	return a, nil

@@ -48,10 +48,10 @@ DELETE FROM expenses WHERE id = ?;
 -- name: DeleteExchangeExpense :exec
 DELETE FROM expenses WHERE exchange_id = ?;
 
--- The expense of an exchange follows its exchange: amount, date and status.
+-- The expense of an exchange follows its exchange: amount, date, status and source account.
 -- name: UpdateExchangeExpense :exec
 UPDATE expenses
-SET amount_minor = ?, description = ?, spent_on = ?, status = ?
+SET amount_minor = ?, description = ?, spent_on = ?, status = ?, account_id = ?
 WHERE exchange_id = ?;
 
 -- name: SetExpenseSeries :execrows

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -253,5 +254,128 @@ func TestRecurringExpense(t *testing.T) {
 	}
 	if len(list("2026-07")) != 2 || len(list("2026-08")) != 1 || len(list("2026-09")) != 0 {
 		t.Errorf("after delete following: %d / %d / %d", len(list("2026-07")), len(list("2026-08")), len(list("2026-09")))
+	}
+}
+
+func TestTransfersMoveMoneyBetweenAccounts(t *testing.T) {
+	h := newTestRouter(t)
+	var bcp, ibk, usd Account
+	decode(t, send(h, http.MethodPost, "/accounts", `{"kind":"bank","name":"BCP","currency":"PEN","balance":"500"}`), &bcp)
+	decode(t, send(h, http.MethodPost, "/accounts", `{"kind":"bank","name":"Interbank","currency":"PEN","balance":"100"}`), &ibk)
+	decode(t, send(h, http.MethodPost, "/accounts", `{"kind":"bank","name":"BCP dólares","currency":"USD","balance":"10"}`), &usd)
+
+	balances := func() map[string]string {
+		out := map[string]string{}
+		for _, a := range listAccounts(t, h) {
+			out[a.Name] = a.Balance
+		}
+		return out
+	}
+	transfer := func(from, to, amount string) *httptest.ResponseRecorder {
+		return send(h, http.MethodPost, "/transfers",
+			`{"from_account_id":"`+from+`","to_account_id":"`+to+`","amount":"`+amount+`","transferred_on":"2026-08-03"}`)
+	}
+
+	rec := transfer(bcp.ID, ibk.ID, "150.25")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("transfer: status = %d (body: %s)", rec.Code, rec.Body)
+	}
+	var tr Transfer
+	decode(t, rec, &tr)
+	if got := balances(); got["BCP"] != "349.75" || got["Interbank"] != "250.25" {
+		t.Errorf("balances = %v, want BCP 349.75 and Interbank 250.25", got)
+	}
+
+	// No summary counts a transfer.
+	var s Summary
+	decode(t, send(h, http.MethodGet, "/periods/2026-08/summary", ""), &s)
+	for _, c := range s.Currencies {
+		if c.Spent != "0.00" {
+			t.Errorf("summary spent = %s, want 0.00", c.Spent)
+		}
+	}
+
+	assertProblem(t, transfer(bcp.ID, bcp.ID, "10"), http.StatusUnprocessableEntity)
+	assertProblem(t, transfer(bcp.ID, usd.ID, "10"), http.StatusUnprocessableEntity)
+	assertProblem(t, transfer(bcp.ID, "nope", "10"), http.StatusUnprocessableEntity)
+	assertProblem(t, transfer(bcp.ID, ibk.ID, "0"), http.StatusUnprocessableEntity)
+
+	// An account with transfers can't be deleted.
+	assertProblem(t, send(h, http.MethodDelete, "/accounts/"+ibk.ID, ""), http.StatusConflict)
+
+	var list []Transfer
+	decode(t, send(h, http.MethodGet, "/transfers", ""), &list)
+	if len(list) != 1 || list[0].ID != tr.ID || list[0].Amount.Amount != "150.25" {
+		t.Errorf("transfers = %+v, want the one made", list)
+	}
+
+	if rec := send(h, http.MethodDelete, "/transfers/"+tr.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete transfer: status = %d", rec.Code)
+	}
+	if got := balances(); got["BCP"] != "500.00" || got["Interbank"] != "100.00" {
+		t.Errorf("balances after deleting = %v, want the originals back", got)
+	}
+	assertProblem(t, send(h, http.MethodDelete, "/transfers/"+tr.ID, ""), http.StatusNotFound)
+}
+
+func TestExchangesMoveMoneyBetweenAccounts(t *testing.T) {
+	h := newTestRouter(t)
+	var usd, pen, penOther Account
+	decode(t, send(h, http.MethodPost, "/accounts", `{"kind":"bank","name":"BCP dólares","currency":"USD","balance":"1000"}`), &usd)
+	decode(t, send(h, http.MethodPost, "/accounts", `{"kind":"bank","name":"BCP soles","currency":"PEN","balance":"50"}`), &pen)
+	decode(t, send(h, http.MethodPost, "/accounts", `{"kind":"bank","name":"Interbank","currency":"PEN","balance":"0"}`), &penOther)
+	send(h, http.MethodPut, ratePath, `{"rate": "3.25"}`)
+
+	balances := func() map[string]string {
+		out := map[string]string{}
+		for _, a := range listAccounts(t, h) {
+			out[a.Name] = a.Balance
+		}
+		return out
+	}
+	register := func(body string) *httptest.ResponseRecorder {
+		return send(h, http.MethodPost, "/periods/2026-07/exchanges", body)
+	}
+
+	// Each side must use its own currency.
+	assertProblem(t, register(`{"from":"USD","to":"PEN","amount":"100","exchanged_on":"2026-07-10","from_account_id":"`+pen.ID+`"}`), http.StatusUnprocessableEntity)
+	assertProblem(t, register(`{"from":"USD","to":"PEN","amount":"100","exchanged_on":"2026-07-10","to_account_id":"`+usd.ID+`"}`), http.StatusUnprocessableEntity)
+
+	rec := register(`{"from":"USD","to":"PEN","amount":"100","exchanged_on":"2026-07-10","from_account_id":"` + usd.ID + `","to_account_id":"` + pen.ID + `"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("exchange: status = %d (body: %s)", rec.Code, rec.Body)
+	}
+	var ex Exchange
+	decode(t, rec, &ex)
+	if ex.FromAccountID != usd.ID || ex.ToAccountID != pen.ID {
+		t.Errorf("exchange = %+v, want both accounts", ex)
+	}
+	if got := balances(); got["BCP dólares"] != "900.00" || got["BCP soles"] != "375.00" {
+		t.Errorf("balances = %v, want 900.00 USD and 375.00 PEN", got)
+	}
+
+	// Editing the amount and the target account moves the money along.
+	rec = send(h, http.MethodPatch, "/periods/2026-07/exchanges/"+ex.ID, `{"amount":"200","to_account_id":"`+penOther.ID+`"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update: status = %d (body: %s)", rec.Code, rec.Body)
+	}
+	if got := balances(); got["BCP dólares"] != "800.00" || got["BCP soles"] != "50.00" || got["Interbank"] != "650.00" {
+		t.Errorf("balances after editing = %v", got)
+	}
+
+	// A planned exchange hasn't happened yet.
+	send(h, http.MethodPatch, "/periods/2026-07/exchanges/"+ex.ID, `{"status":"planned"}`)
+	if got := balances(); got["BCP dólares"] != "1000.00" || got["Interbank"] != "0.00" {
+		t.Errorf("balances while planned = %v, want the originals", got)
+	}
+	send(h, http.MethodPatch, "/periods/2026-07/exchanges/"+ex.ID, `{"status":"confirmed"}`)
+
+	// An account an exchange refers to can't be deleted; deleting the exchange frees it.
+	assertProblem(t, send(h, http.MethodDelete, "/accounts/"+usd.ID, ""), http.StatusConflict)
+	if rec := send(h, http.MethodDelete, "/periods/2026-07/exchanges/"+ex.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete exchange: status = %d", rec.Code)
+	}
+	if got := balances(); got["BCP dólares"] != "1000.00" || got["Interbank"] != "0.00" {
+		t.Errorf("balances after deleting = %v, want the originals", got)
 	}
 }

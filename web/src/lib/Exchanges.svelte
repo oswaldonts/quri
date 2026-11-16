@@ -25,6 +25,18 @@
   let open = $state(false)
   let from = $state<Currency>('')
   let to = $state<Currency>('')
+  let accounts = $state<Schemas['Account'][]>([])
+  let fromAccountId = $state('')
+  let toAccountId = $state('')
+  const fromAccounts = $derived(accounts.filter((a) => a.currency === from))
+  const toAccounts = $derived(accounts.filter((a) => a.currency === to))
+  const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? ''
+
+  // An account of another currency can't stay selected when the pair changes.
+  $effect(() => {
+    if (fromAccountId && !fromAccounts.some((a) => a.id === fromAccountId)) fromAccountId = ''
+    if (toAccountId && !toAccounts.some((a) => a.id === toAccountId)) toAccountId = ''
+  })
 
   // The sheet's currency is what you give; what you receive starts as the first other one registered.
   $effect(() => {
@@ -64,11 +76,14 @@
     void refresh
     const controller = new AbortController()
     loadError = ''
-    api
-      .GET('/periods/{period}/exchanges', { params: { path: { period } }, signal: controller.signal })
-      .then(({ data, error, response }) => {
+    Promise.all([
+      api.GET('/periods/{period}/exchanges', { params: { path: { period } }, signal: controller.signal }),
+      api.GET('/accounts', { signal: controller.signal }),
+    ])
+      .then(([{ data, error, response }, acc]) => {
         if (data) all = data
         else loadError = failureMessage(response, error)
+        if (acc.data) accounts = acc.data
       })
       .catch(() => {
         if (!controller.signal.aborted) loadError = connectionError
@@ -147,6 +162,8 @@
         exchanged_on: exchangedOn,
         description: description.trim(),
         status: planned ? ('planned' as const) : ('confirmed' as const),
+        from_account_id: fromAccountId,
+        to_account_id: toAccountId,
       }
       const { data, error, response } = editingId
         ? await api.PATCH('/periods/{period}/exchanges/{id}', {
@@ -162,6 +179,10 @@
       if (editingId) cancel()
       amount = ''
       description = ''
+      if (!editingId) {
+        fromAccountId = ''
+        toAccountId = ''
+      }
       onchange()
     } catch {
       formError = connectionError
@@ -178,6 +199,8 @@
     exchangedOn = exchange.exchanged_on
     description = exchange.description
     planned = exchange.status === 'planned'
+    fromAccountId = exchange.from_account_id
+    toAccountId = exchange.to_account_id
     formError = ''
     open = true
     await tick()
@@ -189,6 +212,8 @@
     open = false
     amount = ''
     description = ''
+    fromAccountId = ''
+    toAccountId = ''
     planned = planning
     formError = ''
   }
@@ -252,6 +277,23 @@
         <label>
           Fecha
           <DatePicker bind:value={exchangedOn} />
+        </label>
+      </div>
+
+      <div class="row wide">
+        <label>
+          Sale de la cuenta
+          <Select
+            bind:value={fromAccountId}
+            options={[{ value: '', label: 'Sin cuenta' }, ...fromAccounts.map((a) => ({ value: a.id, label: a.name }))]}
+          />
+        </label>
+        <label>
+          Entra a la cuenta
+          <Select
+            bind:value={toAccountId}
+            options={[{ value: '', label: 'Sin cuenta' }, ...toAccounts.map((a) => ({ value: a.id, label: a.name }))]}
+          />
         </label>
       </div>
 
@@ -332,6 +374,8 @@
             <td>
               1 {e.from.currency} = {e.rate} {e.to.currency}{e.description ? ` · ${e.description}` : ''}
               {#if e.status === 'planned'}<span class="badge warn">Planeado</span>{/if}
+              {#if e.from_account_id}<span class="badge">− {accountName(e.from_account_id)}</span>{/if}
+              {#if e.to_account_id}<span class="badge">+ {accountName(e.to_account_id)}</span>{/if}
             </td>
             <td class="num">{formatMoney(e.from.amount, e.from.currency)}</td>
             <td class="num">{formatMoney(e.to.amount, e.to.currency)}</td>

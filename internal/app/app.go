@@ -60,7 +60,7 @@ func New(db *sql.DB, authService *auth.Service, logger *slog.Logger, opts Option
 	budgetRepo := sqlite.NewBudgetRepository(db)
 	budgetService := budget.NewService(budgetRepo, categoryService, currencyService)
 	summaryService := summary.NewService(incomeRepo, expenseRepo, balanceRepo, categoryRepo, budgetRepo, sqlite.NewPeriodBounds(db))
-	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService, currencyService)
+	exchangeService := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categoryService, accountService, currencyService)
 
 	api := httpapi.NewRouter(httpapi.Services{
 		Auth:       authService,

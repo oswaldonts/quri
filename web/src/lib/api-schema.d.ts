@@ -633,6 +633,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the transfers between accounts
+         * @description The latest first.
+         */
+        get: operations["list-transfers"];
+        put?: never;
+        /**
+         * Move money between two accounts
+         * @description Lowers the balance of the source account and raises the one of the target. It is not an expense nor an income, so no summary counts it. Both accounts must use the same currency; use an exchange otherwise.
+         */
+        post: operations["create-transfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transfers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a transfer
+         * @description The balances of its two accounts go back as if it never happened.
+         */
+        delete: operations["delete-transfer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/trends": {
         parameters: {
             query?: never;
@@ -664,7 +708,7 @@ export interface components {
              */
             amount: string;
             /**
-             * @description What the account holds now. For cash: the amount typed minus the cash expenses registered after it.
+             * @description What the account holds now: the amount typed, minus the expenses charged to it, plus the transfers and exchanges that moved money into it (minus those that took it out), all registered after it.
              * @example 180.00
              */
             balance: string;
@@ -819,6 +863,20 @@ export interface components {
             /** @example € */
             symbol?: string;
         };
+        CreateTransferInputBody: {
+            /** @example 500.00 */
+            amount: string;
+            description?: string;
+            /** @description Account the money leaves. */
+            from_account_id: string;
+            /** @description Account that receives it; same currency as the source. */
+            to_account_id: string;
+            /**
+             * Format: date
+             * @example 2026-08-01
+             */
+            transferred_on: string;
+        };
         Currency: {
             /** @example EUR */
             code: string;
@@ -924,6 +982,8 @@ export interface components {
              */
             exchanged_on: string;
             from: components["schemas"]["Money"];
+            /** @description Account the source money came out of; empty when not tracked. */
+            from_account_id: string;
             id: string;
             /** @description ID of the exchange income created in the target currency. */
             income_id: string;
@@ -934,6 +994,8 @@ export interface components {
             /** @enum {string} */
             status: "planned" | "confirmed";
             to: components["schemas"]["Money"];
+            /** @description Account that received the converted amount; empty when not tracked. */
+            to_account_id: string;
         };
         Expense: {
             /** @description Account the money came out of (see /accounts); its balance goes down by the amount. */
@@ -1006,13 +1068,13 @@ export interface components {
             spent: string;
         };
         HealthOutputBody: {
+            /** @description false when the app runs without a login (the desktop build). */
+            auth_required: boolean;
             /**
              * @description Always "ok" when the service is up.
              * @example ok
              */
             status: string;
-            /** @description false when the app runs without a login (the desktop build). */
-            auth_required: boolean;
         };
         Income: {
             /** @example 1330.00 */
@@ -1185,6 +1247,8 @@ export interface components {
              * @example USD
              */
             from: string;
+            /** @description Account the source money comes out of (an account in the source currency). Its balance goes down by amount. */
+            from_account_id?: string;
             /**
              * @description planned: expected, not happened yet (only counts in view=projected). confirmed (default): happened.
              * @enum {string}
@@ -1195,6 +1259,8 @@ export interface components {
              * @example USD
              */
             to: string;
+            /** @description Account that receives the converted amount (an account in the target currency). Its balance goes up. */
+            to_account_id?: string;
         };
         RegisterExpenseInputBody: {
             /** @description Account the money comes out of (see /accounts), in the same currency as the expense. Its balance goes down by the amount once confirmed. */
@@ -1356,6 +1422,22 @@ export interface components {
             tag: string;
             total: string;
         };
+        Transfer: {
+            amount: components["schemas"]["Money"];
+            /** Format: date-time */
+            created_at: string;
+            description: string;
+            /** @description Account the money leaves. */
+            from_account_id: string;
+            id: string;
+            /** @description Account that receives it. */
+            to_account_id: string;
+            /**
+             * Format: date
+             * @example 2026-08-01
+             */
+            transferred_on: string;
+        };
         Trends: {
             /** @example PEN */
             currency: string;
@@ -1395,11 +1477,15 @@ export interface components {
             description?: string;
             /** Format: date */
             exchanged_on?: string;
+            /** @description Account the source money comes out of; empty removes it. */
+            from_account_id?: string;
             /**
              * @description Set confirmed when a planned entry happens; amount and date can be corrected in the same request.
              * @enum {string}
              */
             status?: "planned" | "confirmed";
+            /** @description Account that receives the converted amount; empty removes it. */
+            to_account_id?: string;
         };
         UpdateExpenseInputBody: {
             /** @description Account the money comes out of (see /accounts), in the same currency as the expense. Its balance goes down by the amount once confirmed. Empty removes it. */
@@ -3744,6 +3830,133 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transfer"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTransferInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transfer"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
             };
             /** @description Conflict */
             409: {

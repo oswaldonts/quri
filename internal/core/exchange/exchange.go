@@ -44,7 +44,11 @@ type Exchange struct {
 	Rate        money.Rate
 	Description string
 	ExchangedOn time.Time
-	IncomeID    string        // income created in the target currency
-	Status      status.Status // planned or confirmed; shared by its income and expense
-	CreatedAt   time.Time
+	IncomeID    string // income created in the target currency
+	// FromAccountID is the account the source money comes out of, ToAccountID the one that receives
+	// the converted amount ("" when not tracked).
+	FromAccountID string
+	ToAccountID   string
+	Status        status.Status // planned or confirmed; shared by its income and expense
+	CreatedAt     time.Time
 }

@@ -99,6 +99,7 @@ func toHTTPError(ctx context.Context, op string, err error) error {
 		errors.Is(err, exchange.ErrNotFound),
 		errors.Is(err, balance.ErrNotFound),
 		errors.Is(err, account.ErrNotFound),
+		errors.Is(err, account.ErrTransferNotFound),
 		errors.Is(err, currency.ErrNotFound),
 		errors.Is(err, budget.ErrNotFound):
 		return huma.Error404NotFound(err.Error())

@@ -16,6 +16,9 @@ type AccountService interface {
 	Update(ctx context.Context, id string, in account.UpdateInput) (account.Account, error)
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context) ([]account.Account, error)
+	Transfer(ctx context.Context, in account.TransferInput) (account.Transfer, error)
+	Transfers(ctx context.Context) ([]account.Transfer, error)
+	DeleteTransfer(ctx context.Context, id string) error
 }
 
 // Account is a cash or bank account as returned by the API.
@@ -24,7 +27,7 @@ type Account struct {
 	Name      string    `json:"name" example:"BCP"`
 	Kind      string    `json:"kind" enum:"bank,cash"`
 	Currency  string    `json:"currency" example:"PEN"`
-	Balance   string    `json:"balance" example:"180.00" doc:"What the account holds now. For cash: the amount typed minus the cash expenses registered after it."`
+	Balance   string    `json:"balance" example:"180.00" doc:"What the account holds now: the amount typed, minus the expenses charged to it, plus the transfers and exchanges that moved money into it (minus those that took it out), all registered after it."`
 	Amount    string    `json:"amount" example:"200.00" doc:"The amount typed by hand at updated_at."`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -75,7 +78,107 @@ type UpdateAccountInput struct {
 	}
 }
 
+// Transfer is a movement of money between two accounts of the same currency.
+type Transfer struct {
+	ID          string    `json:"id"`
+	From        string    `json:"from_account_id" doc:"Account the money leaves."`
+	To          string    `json:"to_account_id" doc:"Account that receives it."`
+	Amount      Money     `json:"amount"`
+	Description string    `json:"description"`
+	On          string    `json:"transferred_on" format:"date" example:"2026-08-01"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func toTransfer(t account.Transfer) Transfer {
+	return Transfer{
+		ID:          t.ID,
+		From:        t.From,
+		To:          t.To,
+		Amount:      toMoney(t.Amount),
+		Description: t.Description,
+		On:          t.On.Format(time.DateOnly),
+		CreatedAt:   t.CreatedAt,
+	}
+}
+
+// TransferOutput wraps a Transfer as the response body.
+type TransferOutput struct {
+	Body Transfer
+}
+
+// TransferListOutput is the response of GET /transfers.
+type TransferListOutput struct {
+	Body []Transfer
+}
+
+// TransferParam is the {id} path parameter of a transfer.
+type TransferParam struct {
+	ID string `path:"id"`
+}
+
+// CreateTransferInput is the request of POST /transfers.
+type CreateTransferInput struct {
+	Body struct {
+		From        string `json:"from_account_id" doc:"Account the money leaves."`
+		To          string `json:"to_account_id" doc:"Account that receives it; same currency as the source."`
+		Amount      string `json:"amount" pattern:"^[0-9]{1,13}(\\.[0-9]{1,2})?$" example:"500.00"`
+		Description string `json:"description,omitempty" maxLength:"200"`
+		On          string `json:"transferred_on" format:"date" example:"2026-08-01"`
+	}
+}
+
 func registerAccounts(api huma.API, accounts AccountService) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "create-transfer",
+		Method:        http.MethodPost,
+		Path:          "/transfers",
+		Summary:       "Move money between two accounts",
+		Description:   "Lowers the balance of the source account and raises the one of the target. It is not an expense nor an income, so no summary counts it. Both accounts must use the same currency; use an exchange otherwise.",
+		Tags:          []string{tagAccounts},
+		DefaultStatus: http.StatusCreated,
+		Errors:        []int{http.StatusUnprocessableEntity},
+	}, func(ctx context.Context, in *CreateTransferInput) (*TransferOutput, error) {
+		t, err := accounts.Transfer(ctx, account.TransferInput{
+			From:        in.Body.From,
+			To:          in.Body.To,
+			Amount:      in.Body.Amount,
+			Description: in.Body.Description,
+			On:          in.Body.On,
+		})
+		if err != nil {
+			return nil, toHTTPError(ctx, "create transfer", err)
+		}
+		return &TransferOutput{Body: toTransfer(t)}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "list-transfers",
+		Method:      http.MethodGet,
+		Path:        "/transfers",
+		Summary:     "List the transfers between accounts",
+		Description: "The latest first.",
+		Tags:        []string{tagAccounts},
+	}, func(ctx context.Context, _ *struct{}) (*TransferListOutput, error) {
+		ts, err := accounts.Transfers(ctx)
+		if err != nil {
+			return nil, toHTTPError(ctx, "list transfers", err)
+		}
+		out := &TransferListOutput{Body: make([]Transfer, 0, len(ts))}
+		for _, t := range ts {
+			out.Body = append(out.Body, toTransfer(t))
+		}
+		return out, nil
+	})
+
+	huma.Register(api, deleteOperation("delete-transfer", "/transfers/{id}", "Delete a transfer",
+		"The balances of its two accounts go back as if it never happened.", tagAccounts),
+		func(ctx context.Context, in *TransferParam) (*struct{}, error) {
+			if err := accounts.DeleteTransfer(ctx, in.ID); err != nil {
+				return nil, toHTTPError(ctx, "delete transfer", err)
+			}
+			return nil, nil
+		})
+
 	huma.Register(api, huma.Operation{
 		OperationID:   "create-account",
 		Method:        http.MethodPost,

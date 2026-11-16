@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/income"
@@ -108,6 +109,13 @@ func (allCategories) EnsureInPeriod(_ context.Context, _ period.Period, id strin
 	return category.Category{ID: id, Group: category.GroupSystem}, nil
 }
 
+// noAccounts has no account: any ID is unknown.
+type noAccounts struct{}
+
+func (noAccounts) Get(_ context.Context, _ string) (account.Account, error) {
+	return account.Account{}, account.ErrNotFound
+}
+
 type fixture struct {
 	svc       *Service
 	exchanges *fakeExchanges
@@ -115,7 +123,7 @@ type fixture struct {
 
 func newFixture() fixture {
 	f := fixture{exchanges: &fakeExchanges{}}
-	f.svc = NewService(&fakeRates{rates: map[string]PeriodRate{}}, f.exchanges, allCategories{}, anyCurrency{})
+	f.svc = NewService(&fakeRates{rates: map[string]PeriodRate{}}, f.exchanges, allCategories{}, noAccounts{}, anyCurrency{})
 	f.svc.now = func() time.Time { return time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC) }
 	ids := 0
 	f.svc.newID = func() string { ids++; return fmt.Sprintf("id-%d", ids) }

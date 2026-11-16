@@ -68,12 +68,12 @@ func newTestRouterWithAuth(t *testing.T, authSvc AuthService) http.Handler {
 	categoryRepo := sqlite.NewCategoryRepository(db)
 	categorySvc := category.NewService(categoryRepo, categoryRepo)
 	currencySvc := currency.NewService(sqlite.NewCurrencyRepository(db))
-	exchangeSvc := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categorySvc, currencySvc)
 	incomeRepo := sqlite.NewIncomeRepository(db)
 	expenseRepo := sqlite.NewExpenseRepository(db)
 	balanceRepo := sqlite.NewBalanceRepository(db)
 	budgetRepo := sqlite.NewBudgetRepository(db)
 	accountSvc := account.NewService(sqlite.NewAccountRepository(db), expenseRepo, currencySvc)
+	exchangeSvc := exchange.NewService(sqlite.NewRateRepository(db), sqlite.NewExchangeRepository(db), categorySvc, accountSvc, currencySvc)
 	return NewRouter(Services{
 		Auth:       authSvc,
 		Categories: categorySvc,

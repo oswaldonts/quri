@@ -294,7 +294,7 @@ func (q *Queries) SetExpenseSeries(ctx context.Context, arg SetExpenseSeriesPara
 
 const updateExchangeExpense = `-- name: UpdateExchangeExpense :exec
 UPDATE expenses
-SET amount_minor = ?, description = ?, spent_on = ?, status = ?
+SET amount_minor = ?, description = ?, spent_on = ?, status = ?, account_id = ?
 WHERE exchange_id = ?
 `
 
@@ -303,16 +303,18 @@ type UpdateExchangeExpenseParams struct {
 	Description string
 	SpentOn     string
 	Status      string
+	AccountID   sql.NullString
 	ExchangeID  sql.NullString
 }
 
-// The expense of an exchange follows its exchange: amount, date and status.
+// The expense of an exchange follows its exchange: amount, date, status and source account.
 func (q *Queries) UpdateExchangeExpense(ctx context.Context, arg UpdateExchangeExpenseParams) error {
 	_, err := q.db.ExecContext(ctx, updateExchangeExpense,
 		arg.AmountMinor,
 		arg.Description,
 		arg.SpentOn,
 		arg.Status,
+		arg.AccountID,
 		arg.ExchangeID,
 	)
 	return err

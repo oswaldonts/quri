@@ -133,6 +133,8 @@ func (r *ExchangeRepository) Save(ctx context.Context, e exchange.Exchange, in i
 		IncomeID:        e.IncomeID,
 		CreatedAt:       formatTime(e.CreatedAt),
 		Status:          storedStatus(e.Status),
+		FromAccountID:   sql.NullString{String: e.FromAccountID, Valid: e.FromAccountID != ""},
+		ToAccountID:     sql.NullString{String: e.ToAccountID, Valid: e.ToAccountID != ""},
 	}); err != nil {
 		return fmt.Errorf("insert exchange: %w", err)
 	}
@@ -186,6 +188,8 @@ func (r *ExchangeRepository) Update(ctx context.Context, e exchange.Exchange, in
 		Description:     e.Description,
 		ExchangedOn:     e.ExchangedOn.Format(time.DateOnly),
 		Status:          storedStatus(e.Status),
+		FromAccountID:   sql.NullString{String: e.FromAccountID, Valid: e.FromAccountID != ""},
+		ToAccountID:     sql.NullString{String: e.ToAccountID, Valid: e.ToAccountID != ""},
 		ID:              e.ID,
 	})
 	if err := notFoundIfNone(n, err, exchange.ErrNotFound, e.ID); err != nil {
@@ -207,6 +211,7 @@ func (r *ExchangeRepository) Update(ctx context.Context, e exchange.Exchange, in
 		Description: out.Description,
 		SpentOn:     out.SpentOn.Format(time.DateOnly),
 		Status:      storedStatus(out.Status),
+		AccountID:   sql.NullString{String: out.AccountID, Valid: out.AccountID != ""},
 		ExchangeID:  sql.NullString{String: e.ID, Valid: true},
 	}); err != nil {
 		return fmt.Errorf("update expense: %w", err)
@@ -280,5 +285,8 @@ func toExchange(row sqlitedb.Exchange) (exchange.Exchange, error) {
 		IncomeID:    row.IncomeID,
 		Status:      status.Status(row.Status),
 		CreatedAt:   createdAt,
+
+		FromAccountID: row.FromAccountID.String,
+		ToAccountID:   row.ToAccountID.String,
 	}, nil
 }

@@ -1,7 +1,9 @@
 <script lang="ts">
+  import DatePicker from './DatePicker.svelte'
   import Select from './Select.svelte'
+  import { today } from './dates'
   import { api, connectionError, failureMessage, type Schemas } from './api'
-  import { formatMoney, isNegative, isZero, parseSigned, subtractAmounts, sumAmounts, type Currency } from './money'
+  import { formatMoney, isNegative, isZero, parseAmount, parseSigned, subtractAmounts, sumAmounts, type Currency } from './money'
 
   // available is the Disponible without the cash: the money that should be in the bank accounts.
   let { currency, available, refresh, onchange }: {
@@ -21,6 +23,24 @@
   const unassigned = $derived(subtractAmounts(available, inBanks))
   let loadError = $state('')
 
+  let transfers = $state<Schemas['Transfer'][]>([])
+  const moves = $derived(transfers.filter((t) => t.amount.currency === currency))
+  const accountName = (id: string) => all.find((a) => a.id === id)?.name ?? ''
+  let moving = $state(false)
+  let moveFrom = $state('')
+  let moveTo = $state('')
+  let moveAmount = $state('')
+  let moveOn = $state(today())
+  let moveNote = $state('')
+  let moveError = $state('')
+  const movable = $derived([...(cash ? [cash] : []), ...banks])
+  const parsedMove = $derived(parseAmount(moveAmount))
+
+  $effect(() => {
+    if (!movable.some((a) => a.id === moveFrom)) moveFrom = movable[0]?.id ?? ''
+    if (!movable.some((a) => a.id === moveTo) || moveTo === moveFrom) moveTo = movable.find((a) => a.id !== moveFrom)?.id ?? ''
+  })
+
   let adding = $state(false)
   let kind = $state<'bank' | 'cash'>('bank')
   let name = $state('')
@@ -37,13 +57,13 @@
   $effect(() => {
     void refresh
     const controller = new AbortController()
-    api
-      .GET('/accounts', { signal: controller.signal })
-      .then(({ data, error, response }) => {
+    Promise.all([api.GET('/accounts', { signal: controller.signal }), api.GET('/transfers', { signal: controller.signal })])
+      .then(([{ data, error, response }, tr]) => {
         if (data) {
           all = data
           loadError = ''
         } else loadError = failureMessage(response, error)
+        if (tr.data) transfers = tr.data
       })
       .catch(() => {
         if (!controller.signal.aborted) loadError = connectionError
@@ -146,6 +166,51 @@
     }
   }
 
+  async function move(event: SubmitEvent) {
+    event.preventDefault()
+    moveError = ''
+    if (!parsedMove) {
+      moveError = 'Monto inválido: usa números con hasta 2 decimales.'
+      return
+    }
+    busy = true
+    try {
+      const { error, response } = await api.POST('/transfers', {
+        body: {
+          from_account_id: moveFrom,
+          to_account_id: moveTo,
+          amount: parsedMove,
+          description: moveNote.trim(),
+          transferred_on: moveOn,
+        },
+      })
+      if (error) {
+        moveError = failureMessage(response, error)
+        return
+      }
+      moving = false
+      moveAmount = ''
+      moveNote = ''
+      onchange()
+    } catch {
+      moveError = connectionError
+    } finally {
+      busy = false
+    }
+  }
+
+  async function removeMove(t: Schemas['Transfer']) {
+    const text = `${formatMoney(t.amount.amount, t.amount.currency)} de ${accountName(t.from_account_id)} a ${accountName(t.to_account_id)}`
+    if (!confirm(`¿Eliminar el movimiento ${text}? Los saldos vuelven a como estaban.`)) return
+    try {
+      const { error, response } = await api.DELETE('/transfers/{id}', { params: { path: { id: t.id } } })
+      if (error) loadError = failureMessage(response, error)
+      else onchange()
+    } catch {
+      loadError = connectionError
+    }
+  }
+
   async function remove(account: Schemas['Account']) {
     if (!confirm(`¿Eliminar la cuenta ${account.name}?`)) return
     try {
@@ -181,10 +246,42 @@
 <section class="panel" aria-labelledby="accounts-title">
   <div class="panel-head">
     <h2 id="accounts-title">Cuentas y efectivo</h2>
-    <button class="primary" aria-expanded={adding} onclick={() => (adding = !adding)}>
-      {adding ? 'Cerrar' : 'Agregar cuenta'}
-    </button>
+    <span style="display: flex; gap: 0.5rem">
+      {#if movable.length > 1}
+        <button aria-expanded={moving} onclick={() => (moving = !moving)}>{moving ? 'Cerrar' : 'Mover dinero'}</button>
+      {/if}
+      <button class="primary" aria-expanded={adding} onclick={() => (adding = !adding)}>
+        {adding ? 'Cerrar' : 'Agregar cuenta'}
+      </button>
+    </span>
   </div>
+
+  {#if moving}
+    <form class="entry-form" onsubmit={move}>
+      <label>
+        Desde
+        <Select bind:value={moveFrom} options={movable.map((a) => ({ value: a.id, label: a.name }))} />
+      </label>
+      <label>
+        Hacia
+        <Select bind:value={moveTo} options={movable.map((a) => ({ value: a.id, label: a.name, disabled: a.id === moveFrom }))} />
+      </label>
+      <label>
+        Monto en {currency}
+        <input bind:value={moveAmount} inputmode="decimal" placeholder="0.00" required />
+      </label>
+      <label>
+        Fecha
+        <DatePicker bind:value={moveOn} />
+      </label>
+      <label>
+        Descripción
+        <input bind:value={moveNote} maxlength="200" placeholder="Opcional" />
+      </label>
+      {#if moveError}<p class="error wide" role="alert">{moveError}</p>{/if}
+      <div class="wide"><button class="primary" disabled={busy || !moveAmount || !moveFrom || !moveTo}>Mover</button></div>
+    </form>
+  {/if}
 
   {#if adding}
     <form class="entry-form" onsubmit={create}>
@@ -270,6 +367,21 @@
         </tfoot>
       {/if}
     </table>
+    {#if moves.length}
+      <h3>Movimientos entre cuentas</h3>
+      <table class="list">
+        <tbody>
+          {#each moves as t (t.id)}
+            <tr>
+              <td>{t.transferred_on}</td>
+              <td>{accountName(t.from_account_id)} → {accountName(t.to_account_id)}{t.description ? ` · ${t.description}` : ''}</td>
+              <td class="num">{formatMoney(t.amount.amount, t.amount.currency)}</td>
+              <td class="num"><button class="link" aria-label="Eliminar movimiento" onclick={() => removeMove(t)}>Eliminar</button></td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
     {#if accounts.length && !isZero(unassigned)}
       <p class="muted">
         {isNegative(unassigned)

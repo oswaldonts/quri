@@ -144,3 +144,131 @@ func (r *ExpenseRepository) ChargedSince(ctx context.Context, accountID string, 
 func (r *ExpenseRepository) HasExpenses(ctx context.Context, accountID string) (bool, error) {
 	return r.q.AccountHasExpenses(ctx, sql.NullString{String: accountID, Valid: true})
 }
+
+// SaveTransfer stores a transfer.
+func (r *AccountRepository) SaveTransfer(ctx context.Context, t account.Transfer) error {
+	return r.q.InsertTransfer(ctx, sqlitedb.InsertTransferParams{
+		ID:            t.ID,
+		FromAccountID: t.From,
+		ToAccountID:   t.To,
+		Currency:      string(t.Amount.Currency()),
+		AmountMinor:   t.Amount.Amount(),
+		Description:   t.Description,
+		TransferredOn: t.On.Format(time.DateOnly),
+		CreatedAt:     formatTime(t.CreatedAt),
+	})
+}
+
+// DeleteTransfer returns account.ErrTransferNotFound if no transfer has the ID.
+func (r *AccountRepository) DeleteTransfer(ctx context.Context, id string) error {
+	n, err := r.q.DeleteTransfer(ctx, id)
+	return notFoundIfNone(n, err, account.ErrTransferNotFound, id)
+}
+
+// ListTransfers returns every transfer, the latest first.
+func (r *AccountRepository) ListTransfers(ctx context.Context) ([]account.Transfer, error) {
+	rows, err := r.q.ListTransfers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]account.Transfer, 0, len(rows))
+	for _, row := range rows {
+		c, err := money.ParseCurrency(row.Currency)
+		if err != nil {
+			return nil, fmt.Errorf("transfer row: %w", err)
+		}
+		amount, err := money.New(row.AmountMinor, c)
+		if err != nil {
+			return nil, fmt.Errorf("transfer row: %w", err)
+		}
+		on, err := time.Parse(time.DateOnly, row.TransferredOn)
+		if err != nil {
+			return nil, fmt.Errorf("transfer row: %w", err)
+		}
+		createdAt, err := parseTime(row.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("transfer row: %w", err)
+		}
+		out = append(out, account.Transfer{
+			ID: row.ID, From: row.FromAccountID, To: row.ToAccountID,
+			Amount: amount, Description: row.Description, On: on, CreatedAt: createdAt,
+		})
+	}
+	return out, nil
+}
+
+// movement is an amount with the time it was registered.
+type movement struct {
+	amountMinor int64
+	createdAt   string
+}
+
+// MovedSince is what came into the account minus what went out of it since: transfers in and out,
+// and the converted amount of the confirmed exchanges that name it as their target.
+func (r *AccountRepository) MovedSince(ctx context.Context, accountID string, c money.Currency, since time.Time) (money.Money, error) {
+	in, err := r.q.ListTransfersInByAccount(ctx, accountID)
+	if err != nil {
+		return money.Money{}, err
+	}
+	out, err := r.q.ListTransfersOutByAccount(ctx, accountID)
+	if err != nil {
+		return money.Money{}, err
+	}
+	credits, err := r.q.ListConfirmedExchangeCreditsByAccount(ctx, sql.NullString{String: accountID, Valid: true})
+	if err != nil {
+		return money.Money{}, err
+	}
+
+	total := money.Zero(c)
+	sum := func(rows []movement, sign int64) error {
+		for _, m := range rows {
+			createdAt, err := parseTime(m.createdAt)
+			if err != nil {
+				return fmt.Errorf("movement row: %w", err)
+			}
+			if !createdAt.After(since) {
+				continue
+			}
+			amount, err := money.New(sign*m.amountMinor, c)
+			if err != nil {
+				return fmt.Errorf("movement row: %w", err)
+			}
+			if total, err = total.Add(amount); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	var rows []movement
+	for _, row := range in {
+		rows = append(rows, movement{row.AmountMinor, row.CreatedAt})
+	}
+	if err := sum(rows, 1); err != nil {
+		return money.Money{}, err
+	}
+	rows = rows[:0]
+	for _, row := range credits {
+		rows = append(rows, movement{row.AmountMinor, row.CreatedAt})
+	}
+	if err := sum(rows, 1); err != nil {
+		return money.Money{}, err
+	}
+	rows = rows[:0]
+	for _, row := range out {
+		rows = append(rows, movement{row.AmountMinor, row.CreatedAt})
+	}
+	if err := sum(rows, -1); err != nil {
+		return money.Money{}, err
+	}
+	return total, nil
+}
+
+// HasMoves tells whether any transfer or exchange refers to the account.
+func (r *AccountRepository) HasMoves(ctx context.Context, accountID string) (bool, error) {
+	transfers, err := r.q.AccountHasTransfers(ctx, sqlitedb.AccountHasTransfersParams{FromAccountID: accountID, ToAccountID: accountID})
+	if err != nil || transfers {
+		return transfers, err
+	}
+	id := sql.NullString{String: accountID, Valid: true}
+	return r.q.AccountHasExchanges(ctx, sqlitedb.AccountHasExchangesParams{FromAccountID: id, ToAccountID: id})
+}

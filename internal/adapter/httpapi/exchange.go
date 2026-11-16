@@ -35,6 +35,9 @@ type UpdateExchangeInput struct {
 		Description *string `json:"description,omitempty" maxLength:"200"`
 		ExchangedOn *string `json:"exchanged_on,omitempty" format:"date"`
 		Status      *string `json:"status,omitempty" enum:"planned,confirmed" doc:"Set confirmed when a planned entry happens; amount and date can be corrected in the same request."`
+
+		FromAccountID *string `json:"from_account_id,omitempty" doc:"Account the source money comes out of; empty removes it."`
+		ToAccountID   *string `json:"to_account_id,omitempty" doc:"Account that receives the converted amount; empty removes it."`
 	}
 }
 
@@ -101,6 +104,9 @@ type RegisterExchangeInput struct {
 		Description string       `json:"description,omitempty" maxLength:"200" example:"Casa de cambio"`
 		ExchangedOn string       `json:"exchanged_on" format:"date" example:"2026-08-01"`
 		Status      string       `json:"status,omitempty" enum:"planned,confirmed" doc:"planned: expected, not happened yet (only counts in view=projected). confirmed (default): happened."`
+
+		FromAccountID string `json:"from_account_id,omitempty" doc:"Account the source money comes out of (an account in the source currency). Its balance goes down by amount."`
+		ToAccountID   string `json:"to_account_id,omitempty" doc:"Account that receives the converted amount (an account in the target currency). Its balance goes up."`
 	}
 }
 
@@ -116,6 +122,9 @@ type Exchange struct {
 	IncomeID    string    `json:"income_id" doc:"ID of the exchange income created in the target currency."`
 	Status      string    `json:"status" enum:"planned,confirmed"`
 	CreatedAt   time.Time `json:"created_at"`
+
+	FromAccountID string `json:"from_account_id" doc:"Account the source money came out of; empty when not tracked."`
+	ToAccountID   string `json:"to_account_id" doc:"Account that received the converted amount; empty when not tracked."`
 }
 
 // ExchangeOutput wraps an Exchange as the response body.
@@ -135,6 +144,9 @@ func toExchange(e exchange.Exchange) Exchange {
 		IncomeID:    e.IncomeID,
 		Status:      string(e.Status),
 		CreatedAt:   e.CreatedAt,
+
+		FromAccountID: e.FromAccountID,
+		ToAccountID:   e.ToAccountID,
 	}
 }
 
@@ -222,6 +234,9 @@ func registerExchanges(api huma.API, exchanges ExchangeService) {
 			Description: in.Body.Description,
 			ExchangedOn: in.Body.ExchangedOn,
 			Status:      in.Body.Status,
+
+			FromAccountID: in.Body.FromAccountID,
+			ToAccountID:   in.Body.ToAccountID,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "update exchange", err)
@@ -257,6 +272,9 @@ func registerExchanges(api huma.API, exchanges ExchangeService) {
 			Description: in.Body.Description,
 			ExchangedOn: in.Body.ExchangedOn,
 			Status:      in.Body.Status,
+
+			FromAccountID: in.Body.FromAccountID,
+			ToAccountID:   in.Body.ToAccountID,
 		})
 		if err != nil {
 			return nil, toHTTPError(ctx, "register exchange", err)

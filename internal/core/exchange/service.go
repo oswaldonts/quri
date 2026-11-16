@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/oswaldoaquinas/go-income-mgr/internal/core/account"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/category"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/currency"
 	"github.com/oswaldoaquinas/go-income-mgr/internal/core/expense"
@@ -50,18 +51,20 @@ type Service struct {
 	rates      RateRepository
 	exchanges  Repository
 	categories expense.CategoryResolver
+	accounts   expense.AccountResolver
 	currencies currency.Checker
 	now        func() time.Time
 	newID      func() string
 }
 
 // NewService returns a Service. categories provides the system category that
-// receives the source side of each exchange.
-func NewService(rates RateRepository, exchanges Repository, categories expense.CategoryResolver, currencies currency.Checker) *Service {
+// receives the source side of each exchange; accounts resolves the optional accounts it moves money between.
+func NewService(rates RateRepository, exchanges Repository, categories expense.CategoryResolver, accounts expense.AccountResolver, currencies currency.Checker) *Service {
 	return &Service{
 		rates:      rates,
 		exchanges:  exchanges,
 		categories: categories,
+		accounts:   accounts,
 		currencies: currencies,
 		now:        time.Now,
 		newID:      rand.Text,
@@ -135,6 +138,10 @@ type RegisterInput struct {
 	Description string // optional, up to 200 characters
 	ExchangedOn string // YYYY-MM-DD
 	Status      string // "planned" or "confirmed" (default)
+	// FromAccountID and ToAccountID are the optional accounts the source money comes out of and
+	// the converted amount goes into; each must be in its side's currency.
+	FromAccountID string
+	ToAccountID   string
 }
 
 // Register converts Amount with the period rate and stores, in one transaction, the
@@ -185,6 +192,15 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, err
 		return Exchange{}, invalid(fmt.Errorf("%s %s converts to %s %s", amount, from, converted, to))
 	}
 
+	fromAccount, err := s.checkAccount(ctx, in.FromAccountID, from)
+	if err != nil {
+		return Exchange{}, err
+	}
+	toAccount, err := s.checkAccount(ctx, in.ToAccountID, to)
+	if err != nil {
+		return Exchange{}, err
+	}
+
 	// The source amount is an expense in the system exchange category of the period.
 	if _, err := s.categories.EnsureInPeriod(ctx, p, category.ExchangeCategoryID); err != nil {
 		return Exchange{}, fmt.Errorf("exchange category: %w", err)
@@ -201,6 +217,9 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Exchange, err
 		IncomeID:    s.newID(),
 		Status:      st,
 		CreatedAt:   s.now().UTC(),
+
+		FromAccountID: fromAccount,
+		ToAccountID:   toAccount,
 	}
 	inc, out := derived(ex, s.newID())
 
@@ -233,6 +252,7 @@ func derived(ex Exchange, expenseID string) (income.Income, expense.Expense) {
 		ExchangeID:  ex.ID,
 		Status:      ex.Status,
 		CreatedAt:   ex.CreatedAt,
+		AccountID:   ex.FromAccountID,
 	}
 	return inc, out
 }
@@ -243,6 +263,9 @@ type UpdateInput struct {
 	Description *string
 	ExchangedOn *string
 	Status      *string
+	// FromAccountID and ToAccountID change the accounts; "" removes them.
+	FromAccountID *string
+	ToAccountID   *string
 }
 
 // Update changes an exchange of the period together with its income and expense,
@@ -298,6 +321,17 @@ func (s *Service) Update(ctx context.Context, periodStr, id string, in UpdateInp
 		}
 	}
 
+	if in.FromAccountID != nil {
+		if ex.FromAccountID, err = s.checkAccount(ctx, *in.FromAccountID, ex.From.Currency()); err != nil {
+			return Exchange{}, err
+		}
+	}
+	if in.ToAccountID != nil {
+		if ex.ToAccountID, err = s.checkAccount(ctx, *in.ToAccountID, ex.To.Currency()); err != nil {
+			return Exchange{}, err
+		}
+	}
+
 	inc, out := derived(ex, "") // the expense is updated through its exchange ID
 	if err := s.exchanges.Update(ctx, ex, inc, out); err != nil {
 		return Exchange{}, fmt.Errorf("update exchange: %w", err)
@@ -340,6 +374,26 @@ func (s *Service) findRate(ctx context.Context, p period.Period, from, to money.
 		return PeriodRate{}, fmt.Errorf("find rate: %w", err)
 	}
 	return r, nil
+}
+
+// checkAccount checks that an optional account exists and uses the currency of its side of the
+// exchange, and returns its ID ("" when none was given).
+func (s *Service) checkAccount(ctx context.Context, id string, c money.Currency) (string, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", nil
+	}
+	a, err := s.accounts.Get(ctx, id)
+	if errors.Is(err, account.ErrNotFound) {
+		return "", invalid(err)
+	}
+	if err != nil {
+		return "", fmt.Errorf("check account: %w", err)
+	}
+	if a.Amount.Currency() != c {
+		return "", invalid(fmt.Errorf("account %s is in %s, this side of the exchange in %s", a.Name, a.Amount.Currency(), c))
+	}
+	return a.ID, nil
 }
 
 // requirePair checks that both currencies of a new rate or exchange are registered.

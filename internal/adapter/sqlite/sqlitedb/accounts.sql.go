@@ -10,6 +10,22 @@ import (
 	"database/sql"
 )
 
+const accountHasExchanges = `-- name: AccountHasExchanges :one
+SELECT EXISTS (SELECT 1 FROM exchanges WHERE from_account_id = ? OR to_account_id = ?)
+`
+
+type AccountHasExchangesParams struct {
+	FromAccountID sql.NullString
+	ToAccountID   sql.NullString
+}
+
+func (q *Queries) AccountHasExchanges(ctx context.Context, arg AccountHasExchangesParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, accountHasExchanges, arg.FromAccountID, arg.ToAccountID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const accountHasExpenses = `-- name: AccountHasExpenses :one
 SELECT EXISTS (SELECT 1 FROM expenses WHERE account_id = ?)
 `
@@ -21,12 +37,40 @@ func (q *Queries) AccountHasExpenses(ctx context.Context, accountID sql.NullStri
 	return exists, err
 }
 
+const accountHasTransfers = `-- name: AccountHasTransfers :one
+SELECT EXISTS (SELECT 1 FROM transfers WHERE from_account_id = ? OR to_account_id = ?)
+`
+
+type AccountHasTransfersParams struct {
+	FromAccountID string
+	ToAccountID   string
+}
+
+func (q *Queries) AccountHasTransfers(ctx context.Context, arg AccountHasTransfersParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, accountHasTransfers, arg.FromAccountID, arg.ToAccountID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const deleteAccount = `-- name: DeleteAccount :execrows
 DELETE FROM accounts WHERE id = ?
 `
 
 func (q *Queries) DeleteAccount(ctx context.Context, id string) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteAccount, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteTransfer = `-- name: DeleteTransfer :execrows
+DELETE FROM transfers WHERE id = ?
+`
+
+func (q *Queries) DeleteTransfer(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteTransfer, id)
 	if err != nil {
 		return 0, err
 	}
@@ -79,6 +123,36 @@ func (q *Queries) InsertAccount(ctx context.Context, arg InsertAccountParams) er
 	return err
 }
 
+const insertTransfer = `-- name: InsertTransfer :exec
+INSERT INTO transfers (id, from_account_id, to_account_id, currency, amount_minor, description, transferred_on, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertTransferParams struct {
+	ID            string
+	FromAccountID string
+	ToAccountID   string
+	Currency      string
+	AmountMinor   int64
+	Description   string
+	TransferredOn string
+	CreatedAt     string
+}
+
+func (q *Queries) InsertTransfer(ctx context.Context, arg InsertTransferParams) error {
+	_, err := q.db.ExecContext(ctx, insertTransfer,
+		arg.ID,
+		arg.FromAccountID,
+		arg.ToAccountID,
+		arg.Currency,
+		arg.AmountMinor,
+		arg.Description,
+		arg.TransferredOn,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const listAccounts = `-- name: ListAccounts :many
 SELECT id, name, kind, currency, amount_minor, updated_at
 FROM accounts
@@ -116,6 +190,40 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 	return items, nil
 }
 
+const listConfirmedExchangeCreditsByAccount = `-- name: ListConfirmedExchangeCreditsByAccount :many
+SELECT to_amount_minor AS amount_minor, created_at
+FROM exchanges
+WHERE to_account_id = ? AND status = 'confirmed'
+`
+
+type ListConfirmedExchangeCreditsByAccountRow struct {
+	AmountMinor int64
+	CreatedAt   string
+}
+
+func (q *Queries) ListConfirmedExchangeCreditsByAccount(ctx context.Context, toAccountID sql.NullString) ([]ListConfirmedExchangeCreditsByAccountRow, error) {
+	rows, err := q.db.QueryContext(ctx, listConfirmedExchangeCreditsByAccount, toAccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListConfirmedExchangeCreditsByAccountRow{}
+	for rows.Next() {
+		var i ListConfirmedExchangeCreditsByAccountRow
+		if err := rows.Scan(&i.AmountMinor, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listConfirmedExpensesByAccount = `-- name: ListConfirmedExpensesByAccount :many
 SELECT amount_minor, created_at
 FROM expenses
@@ -137,6 +245,108 @@ func (q *Queries) ListConfirmedExpensesByAccount(ctx context.Context, accountID 
 	items := []ListConfirmedExpensesByAccountRow{}
 	for rows.Next() {
 		var i ListConfirmedExpensesByAccountRow
+		if err := rows.Scan(&i.AmountMinor, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTransfers = `-- name: ListTransfers :many
+SELECT id, from_account_id, to_account_id, currency, amount_minor, description, transferred_on, created_at
+FROM transfers
+ORDER BY transferred_on DESC, created_at DESC
+`
+
+func (q *Queries) ListTransfers(ctx context.Context) ([]Transfer, error) {
+	rows, err := q.db.QueryContext(ctx, listTransfers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transfer{}
+	for rows.Next() {
+		var i Transfer
+		if err := rows.Scan(
+			&i.ID,
+			&i.FromAccountID,
+			&i.ToAccountID,
+			&i.Currency,
+			&i.AmountMinor,
+			&i.Description,
+			&i.TransferredOn,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTransfersInByAccount = `-- name: ListTransfersInByAccount :many
+SELECT amount_minor, created_at FROM transfers WHERE to_account_id = ?
+`
+
+type ListTransfersInByAccountRow struct {
+	AmountMinor int64
+	CreatedAt   string
+}
+
+func (q *Queries) ListTransfersInByAccount(ctx context.Context, toAccountID string) ([]ListTransfersInByAccountRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTransfersInByAccount, toAccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTransfersInByAccountRow{}
+	for rows.Next() {
+		var i ListTransfersInByAccountRow
+		if err := rows.Scan(&i.AmountMinor, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTransfersOutByAccount = `-- name: ListTransfersOutByAccount :many
+SELECT amount_minor, created_at FROM transfers WHERE from_account_id = ?
+`
+
+type ListTransfersOutByAccountRow struct {
+	AmountMinor int64
+	CreatedAt   string
+}
+
+func (q *Queries) ListTransfersOutByAccount(ctx context.Context, fromAccountID string) ([]ListTransfersOutByAccountRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTransfersOutByAccount, fromAccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTransfersOutByAccountRow{}
+	for rows.Next() {
+		var i ListTransfersOutByAccountRow
 		if err := rows.Scan(&i.AmountMinor, &i.CreatedAt); err != nil {
 			return nil, err
 		}

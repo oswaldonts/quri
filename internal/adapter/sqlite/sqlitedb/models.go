@@ -61,6 +61,8 @@ type Exchange struct {
 	IncomeID        string
 	CreatedAt       string
 	Status          string
+	FromAccountID   sql.NullString
+	ToAccountID     sql.NullString
 }
 
 type Expense struct {
@@ -116,4 +118,15 @@ type Setting struct {
 	ID              int64
 	DefaultCurrency sql.NullString
 	ClosedThrough   sql.NullString
+}
+
+type Transfer struct {
+	ID            string
+	FromAccountID string
+	ToAccountID   string
+	Currency      string
+	AmountMinor   int64
+	Description   string
+	TransferredOn string
+	CreatedAt     string
 }
