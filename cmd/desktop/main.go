@@ -31,7 +31,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("locate config directory: %w", err)
 	}
-	db, err := app.OpenDB(ctx, filepath.Join(configDir, "go-income-mgr", "income.db"))
+	dbPath := filepath.Join(configDir, "go-income-mgr", "income.db")
+	if err := applyPendingRestore(dbPath); err != nil {
+		return err
+	}
+	db, err := app.OpenDB(ctx, dbPath)
 	if err != nil {
 		return err
 	}
@@ -44,6 +48,8 @@ func run() error {
 		return err
 	}
 
+	backup := &Backup{db: db, dbPath: dbPath}
+
 	return wails.Run(&options.App{
 		Title:     "Quri",
 		Width:     1280,
@@ -53,6 +59,8 @@ func run() error {
 		AssetServer: &assetserver.Options{
 			Handler: handler,
 		},
+		OnStartup:        backup.startup,
+		Bind:             []any{backup},
 		BackgroundColour: &options.RGBA{R: 19, G: 19, B: 24, A: 255},
 	})
 }

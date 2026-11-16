@@ -18,7 +18,7 @@ JOB   := -var-file=$(ENV).vars.hcl -var image=$(IMAGE) \
 export NOMAD_NAMESPACE := $(ENV)
 
 .DEFAULT_GOAL := help
-.PHONY: help run down test vet fmt check sqlc web-dev web-build web-check web-types desktop image plan deploy status logs clean-tree
+.PHONY: help run down test vet fmt check sqlc web-dev web-build web-check web-types desktop desktop-test image plan deploy status logs clean-tree
 
 help: ## List the targets
 	@awk -F ':.*## ' '/^## / {print "\n" substr($$0, 4)} /^[a-z-]+:.*## / {printf "  %-10s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -72,6 +72,10 @@ DESKTOP_GO := docker run --rm --user $$(id -u):$$(id -g) -e HOME=/tmp -e GOCACHE
 desktop: web-build ## Build the Linux desktop app into bin/quri (runs on a host with libwebkit2gtk-4.1)
 	docker build -q -f docker/desktop.Dockerfile -t $(DESKTOP_IMAGE) docker
 	$(DESKTOP_GO) build -tags "desktop,production,webkit2_41" -trimpath -ldflags="-s -w" -o /app/bin/quri .
+
+desktop-test: ## Test the desktop module (backup and restore)
+	docker build -q -f docker/desktop.Dockerfile -t $(DESKTOP_IMAGE) docker
+	$(DESKTOP_GO) test -tags "desktop,production,webkit2_41" ./...
 
 ## Deployment (ENV=dev by default)
 

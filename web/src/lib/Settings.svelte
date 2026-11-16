@@ -20,6 +20,30 @@
 
   let defaultError = $state('')
 
+  // Only the desktop app offers backups: it binds these two functions into the window.
+  type BackupApi = { ExportBackup: () => Promise<string>; ImportBackup: () => Promise<boolean> }
+  const backup = (window as unknown as { go?: { main?: { Backup?: BackupApi } } }).go?.main?.Backup
+  let backupMessage = $state('')
+  let backupError = $state('')
+  let backupBusy = $state(false)
+
+  async function runBackup(action: 'export' | 'import') {
+    backupBusy = true
+    backupMessage = backupError = ''
+    try {
+      if (action === 'export') {
+        const path = await backup!.ExportBackup()
+        if (path) backupMessage = `Copia guardada en ${path}`
+      } else {
+        await backup!.ImportBackup()
+      }
+    } catch (e) {
+      backupError = String(e)
+    } finally {
+      backupBusy = false
+    }
+  }
+
   async function changeDefault(code: string | number) {
     defaultError = await settings.setDefaultCurrency(String(code)).catch(() => connectionError)
   }
@@ -189,6 +213,21 @@
   {#if defaultError}<p class="error" role="alert">{defaultError}</p>{/if}
   <p class="muted">Sin moneda por defecto se abre la última que usaste. El orden de las monedas se cambia en la pestaña Monedas.</p>
 </section>
+
+{#if backup}
+<section class="panel" aria-labelledby="backup-title">
+  <div class="panel-head">
+    <h2 id="backup-title">Copia de seguridad</h2>
+  </div>
+  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+    <button class="primary" disabled={backupBusy} onclick={() => runBackup('export')}>Exportar copia</button>
+    <button disabled={backupBusy} onclick={() => runBackup('import')}>Restaurar copia</button>
+  </div>
+  {#if backupMessage}<p role="status">{backupMessage}</p>{/if}
+  {#if backupError}<p class="error" role="alert">{backupError}</p>{/if}
+  <p class="muted">Tus datos viven solo en este equipo. Guarda copias en otro lugar (un disco externo, la nube) para no perderlos. Al restaurar, los datos actuales se reemplazan por los de la copia.</p>
+</section>
+{/if}
 
 {:else}
 <Categories {period} {onchange} />
